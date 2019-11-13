@@ -206,10 +206,10 @@ void ColorBuffer::Create3D(const std::wstring& Name, uint32_t Width, uint32_t He
     CreateDerivedViews(Graphics::g_Device, Format, 1, NumMips);
 }
 
-void ColorBuffer::Create(const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t NumMips,
+void ColorBuffer::Create3D(const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t Depth, uint32_t NumMips,
     DXGI_FORMAT Format, EsramAllocator&)
 {
-    Create(Name, Width, Height, NumMips, Format);
+    Create3D(Name, Width, Height, Depth, NumMips, Format);
 }
 
 void ColorBuffer::GenerateMipMaps(CommandContext& BaseContext)
