@@ -134,7 +134,7 @@ namespace SSAO
     {
         size_t BufferWidth = DepthBuffer.GetWidth();
         size_t BufferHeight = DepthBuffer.GetHeight();
-        size_t ArrayCount = DepthBuffer.GetDepth();
+        size_t ArrayCount = DepthBuffer.GetArraySize();
 
         // Here we compute multipliers that convert the center depth value into (the reciprocal of)
         // sphere thicknesses at each sample location.  This assumes a maximum sample radius of 5
