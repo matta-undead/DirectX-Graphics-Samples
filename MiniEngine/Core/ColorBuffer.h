@@ -54,6 +54,17 @@ public:
     void CreateArray(const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t ArrayCount,
         DXGI_FORMAT Format, EsramAllocator& Allocator);
 
+    // Create a 3D color buffer.  If an address is supplied, memory will not be allocated.
+    // The vmem address allows you to alias buffers (which can be especially useful for
+    // reusing ESRAM across a frame.)
+    void Create3D(const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t Depth, uint32_t NumMips,
+        DXGI_FORMAT Format, D3D12_GPU_VIRTUAL_ADDRESS VidMemPtr = D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN);
+
+    // Create a 3D color buffer.  Memory will be allocated in ESRAM (on Xbox One).  On Windows,
+    // this functions the same as Create() without a video address.
+    void Create3D(const std::wstring& Name, uint32_t Width, uint32_t Height, uint32_t Depth, uint32_t NumMips,
+        DXGI_FORMAT Format, EsramAllocator& Allocator);
+
     // Get pre-created CPU-visible descriptor handles
     const D3D12_CPU_DESCRIPTOR_HANDLE& GetSRV(void) const { return m_SRVHandle; }
     const D3D12_CPU_DESCRIPTOR_HANDLE& GetRTV(void) const { return m_RTVHandle; }

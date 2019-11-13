@@ -318,9 +318,12 @@ void PixelBuffer::AssociateWithResource( ID3D12Device* Device, const std::wstrin
     m_pResource.Attach(Resource);
     m_UsageState = CurrentState;
 
+    const bool Is3D = (D3D12_RESOURCE_DIMENSION_TEXTURE3D == ResourceDesc.Dimension);
+
     m_Width = (uint32_t)ResourceDesc.Width;        // We don't care about large virtual textures yet
     m_Height = ResourceDesc.Height;
-    m_ArraySize = ResourceDesc.DepthOrArraySize;
+    m_Depth = (Is3D ? ResourceDesc.DepthOrArraySize : 1);
+    m_ArraySize = (Is3D ? 1 : ResourceDesc.DepthOrArraySize);
     m_Format = ResourceDesc.Format;
 
 #ifndef RELEASE
@@ -330,18 +333,43 @@ void PixelBuffer::AssociateWithResource( ID3D12Device* Device, const std::wstrin
 #endif
 }
 
-D3D12_RESOURCE_DESC PixelBuffer::DescribeTex2D( uint32_t Width, uint32_t Height, uint32_t DepthOrArraySize,
+D3D12_RESOURCE_DESC PixelBuffer::DescribeTex2D( uint32_t Width, uint32_t Height, uint32_t ArraySize,
     uint32_t NumMips, DXGI_FORMAT Format, UINT Flags)
 {
     m_Width = Width;
     m_Height = Height;
-    m_ArraySize = DepthOrArraySize;
+    m_Depth = 1;
+    m_ArraySize = ArraySize;
     m_Format = Format;
 
     D3D12_RESOURCE_DESC Desc = {};
     Desc.Alignment = 0;
-    Desc.DepthOrArraySize = (UINT16)DepthOrArraySize;
+    Desc.DepthOrArraySize = (UINT16)ArraySize;
     Desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    Desc.Flags = (D3D12_RESOURCE_FLAGS)Flags;
+    Desc.Format = GetBaseFormat(Format);
+    Desc.Height = (UINT)Height;
+    Desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    Desc.MipLevels = (UINT16)NumMips;
+    Desc.SampleDesc.Count = 1;
+    Desc.SampleDesc.Quality = 0;
+    Desc.Width = (UINT64)Width;
+    return Desc;
+}
+
+D3D12_RESOURCE_DESC PixelBuffer::DescribeTex3D( uint32_t Width, uint32_t Height, uint32_t Depth,
+    uint32_t NumMips, DXGI_FORMAT Format, UINT Flags)
+{
+    m_Width = Width;
+    m_Height = Height;
+    m_Depth = Depth;
+    m_ArraySize = 1;
+    m_Format = Format;
+
+    D3D12_RESOURCE_DESC Desc = {};
+    Desc.Alignment = 0;
+    Desc.DepthOrArraySize = (UINT16)Depth;
+    Desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
     Desc.Flags = (D3D12_RESOURCE_FLAGS)Flags;
     Desc.Format = GetBaseFormat(Format);
     Desc.Height = (UINT)Height;

@@ -20,11 +20,12 @@ class EsramAllocator;
 class PixelBuffer : public GpuResource
 {
 public:
-    PixelBuffer() : m_Width(0), m_Height(0), m_ArraySize(0), m_Format(DXGI_FORMAT_UNKNOWN), m_BankRotation(0) {}
+    PixelBuffer() : m_Width(0), m_Height(0), m_Depth(0), m_ArraySize(0), m_Format(DXGI_FORMAT_UNKNOWN), m_BankRotation(0) {}
 
     uint32_t GetWidth(void) const { return m_Width; }
     uint32_t GetHeight(void) const { return m_Height; }
-    uint32_t GetDepth(void) const { return m_ArraySize; }
+    uint32_t GetDepth(void) const { return m_Depth; }
+    uint32_t GetArraySize(void) const { return m_ArraySize; }
     const DXGI_FORMAT& GetFormat(void) const { return m_Format; }
 
     // Has no effect on Windows
@@ -36,7 +37,8 @@ public:
 
 protected:
 
-    D3D12_RESOURCE_DESC DescribeTex2D(uint32_t Width, uint32_t Height, uint32_t DepthOrArraySize, uint32_t NumMips, DXGI_FORMAT Format, UINT Flags);
+    D3D12_RESOURCE_DESC DescribeTex2D(uint32_t Width, uint32_t Height, uint32_t ArraySize, uint32_t NumMips, DXGI_FORMAT Format, UINT Flags);
+    D3D12_RESOURCE_DESC DescribeTex3D(uint32_t Width, uint32_t Height, uint32_t Depth, uint32_t NumMips, DXGI_FORMAT Format, UINT Flags);
 
     void AssociateWithResource( ID3D12Device* Device, const std::wstring& Name, ID3D12Resource* Resource, D3D12_RESOURCE_STATES CurrentState );
 
@@ -55,6 +57,7 @@ protected:
 
     uint32_t m_Width;
     uint32_t m_Height;
+    uint32_t m_Depth;
     uint32_t m_ArraySize;
     DXGI_FORMAT m_Format;
     uint32_t m_BankRotation;
