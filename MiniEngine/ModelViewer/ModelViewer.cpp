@@ -38,6 +38,10 @@
 // Run CompileSM6Test.bat to compile the relevant shaders with DXC.
 //#define _WAVE_OP
 
+// Simplify scene by removing particle effects and white sheet.
+static bool kShowParticles = false;
+static bool kShowFlag = false;
+
 #include "CompiledShaders/DepthViewerVS.h"
 #include "CompiledShaders/DepthViewerPS.h"
 #include "CompiledShaders/ModelViewerVS.h"
@@ -229,7 +233,11 @@ void ModelViewer::Startup( void )
         }
     }
 
-    CreateParticleEffects();
+    if (kShowParticles)
+    {
+        CreateParticleEffects();
+    }
+
 
     float modelRadius = Length(m_Model.m_Header.boundingBox.max - m_Model.m_Header.boundingBox.min) * .5f;
     const Vector3 eye = (m_Model.m_Header.boundingBox.min + m_Model.m_Header.boundingBox.max) * .5f + Vector3(modelRadius * .5f, 0.0f, 0.0f);
@@ -324,6 +332,16 @@ void ModelViewer::RenderObjects( GraphicsContext& gfxContext, const Matrix4& Vie
     {
         const Model::Mesh& mesh = m_Model.m_pMesh[meshIndex];
 
+        // Skip white sheet
+        if (!kShowFlag)
+        {
+            const Model::Material& mat = m_Model.m_pMaterial[mesh.materialIndex];
+            if (std::string(mat.texDiffusePath).find("gi_flag") != std::string::npos)
+            {
+                continue;
+            }
+        }
+
         uint32_t indexCount = mesh.indexCount;
         uint32_t startIndex = mesh.indexDataByteOffset / sizeof(uint16_t);
         uint32_t baseVertex = mesh.vertexDataByteOffset / VertexStride;
@@ -393,7 +411,10 @@ void ModelViewer::RenderScene( void )
 
     GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Render");
 
-    ParticleEffects::Update(gfxContext.GetComputeContext(), Graphics::GetFrameTime());
+    if (kShowParticles)
+    {
+        ParticleEffects::Update(gfxContext.GetComputeContext(), Graphics::GetFrameTime());
+    }
 
     uint32_t FrameIndex = TemporalEffects::GetFrameIndexMod2();
 
@@ -531,8 +552,11 @@ void ModelViewer::RenderScene( void )
     MotionBlur::GenerateCameraVelocityBuffer(gfxContext, m_Camera, true);
 
     TemporalEffects::ResolveImage(gfxContext);
-
-    ParticleEffects::Render(gfxContext, m_Camera, g_SceneColorBuffer, g_SceneDepthBuffer,  g_LinearDepth[FrameIndex]);
+    
+    if (kShowParticles)
+    {
+        ParticleEffects::Render(gfxContext, m_Camera, g_SceneColorBuffer, g_SceneDepthBuffer,  g_LinearDepth[FrameIndex]);
+    }
 
     // Until I work out how to couple these two, it's "either-or".
     if (DepthOfField::Enable)
