@@ -232,15 +232,16 @@ void ModelViewer::Startup( void )
     m_VoxelScissor.bottom = (LONG)kVoxelDims;
 
     m_VoxelizePSO = m_DepthPSO;
-    m_VoxelizePSO.SetDepthStencilState(DepthStateDisabled);//DepthStateReadOnly);
+    m_VoxelizePSO.SetDepthStencilState(DepthStateDisabled);
+
+    // getting an error trying to specify multisample count for a null render target.
+    // but using msaa is critical to one of the options for approximating conservative
+    // rasterization when generating voxel data.
     m_VoxelizePSO.SetRenderTargetFormats(0, nullptr, DXGI_FORMAT_UNKNOWN);//, 8U);
+
     m_VoxelizePSO.SetVertexShader(g_pModelViewerVS, sizeof(g_pModelViewerVS));
-#if 1
     m_VoxelizePSO.SetGeometryShader(g_pVoxelizeGS, sizeof(g_pVoxelizeGS));
     m_VoxelizePSO.SetPixelShader(g_pVoxelizePS, sizeof(g_pVoxelizePS));
-#else
-    m_VoxelizePSO.SetPixelShader( g_pVoxelizePS, sizeof(g_pVoxelizePS) );
-#endif
     m_VoxelizePSO.Finalize();
 
     Lighting::InitializeResources();
