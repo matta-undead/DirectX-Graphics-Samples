@@ -1,17 +1,3 @@
-//
-// Copyright (c) Microsoft. All rights reserved.
-// This code is licensed under the MIT License (MIT).
-// THIS CODE IS PROVIDED *AS IS* WITHOUT WARRANTY OF
-// ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING ANY
-// IMPLIED WARRANTIES OF FITNESS FOR A PARTICULAR
-// PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
-//
-// Developed by Minigraph
-//
-// Author(s):    James Stanard
-//                Alex Nankervis
-//
-// Thanks to Michal Drobot for his feedback.
 
 #include "ModelViewerRS.hlsli"
 #include "LightGrid.hlsli"
@@ -33,6 +19,19 @@ struct VSOutput
     sample float3 bitangent : Bitangent;
 };
 
+struct GSOutput
+{
+    sample float4 position : SV_Position;
+    sample float3 worldPos : WorldPos;
+    sample float2 uv : TexCoord0;
+    sample float3 viewDir : TexCoord1;
+    sample float3 shadowCoord : TexCoord2;
+    sample float3 normal : Normal;
+    sample float3 tangent : Tangent;
+    sample float3 bitangent : Bitangent;
+    sample float2 swizzle : TexCoord3;
+};
+
 Texture2D<float3> texDiffuse        : register(t0);
 Texture2D<float3> texSpecular        : register(t1);
 //Texture2D<float4> texEmissive        : register(t2);
@@ -48,6 +47,55 @@ ByteAddressBuffer lightGrid : register(t68);
 ByteAddressBuffer lightGridBitMask : register(t69);
 
 RWTexture3D<uint> voxelBuffer : register(u1);
+
+// interlocked average garbage
+
+float4 UnpackFloat4FromUint(uint val)
+{
+    return float4(
+        float((val & 0x000000ff)),
+        float((val & 0x0000ff00) >> 8u),
+        float((val & 0x00ff0000) >> 16u),
+        float((val & 0xff000000) >> 24u)
+    );
+}
+
+uint PackUintFromFloat4(float4 val)
+{
+    return (uint(val.w) & 0x000000ff) << 24u
+        | (uint(val.z) & 0x000000ff) << 16u
+        | (uint(val.y) & 0x000000ff) << 8u
+        | (uint(val.x) & 0x000000ff);
+}
+
+bool ImageAtomicCompareHelper(uint3 coords, uint previousStoredVal, uint newVal, inout uint currentStoredVal)
+{
+    InterlockedCompareExchange(voxelBuffer[coords], previousStoredVal, newVal, currentStoredVal);
+    return (currentStoredVal != previousStoredVal);
+}
+
+void ImageAtomicAverage(uint3 coords, float4 val)
+{
+    val.rgb *= 255.0;
+    uint newVal = PackUintFromFloat4(val);
+    uint previousStoredVal = 0u;
+    uint currentStoredVal = 0u;
+    while (ImageAtomicCompareHelper(coords, previousStoredVal, newVal, currentStoredVal))
+    {
+        previousStoredVal = currentStoredVal;
+        float4 rVal = UnpackFloat4FromUint(currentStoredVal);
+        rVal.xyz = (rVal.xyz * rVal.w); // Denormalize
+        float4 currValF = rVal + val;   // Add new value
+        currValF.xyz *= (1.0/currValF.w); // Renormalize
+        newVal = PackUintFromFloat4(currValF);
+    }
+}
+
+
+
+
+
+
 
 cbuffer PSConstants : register(b0)
 {
@@ -320,6 +368,9 @@ uint64_t Ballot64(bool b)
 
 #endif // _WAVE_OP
 
+
+
+
 // Helper function for iterating over a sparse list of bits.  Gets the offset of the next
 // set bit, clears it, and returns the offset.
 uint PullNextBit( inout uint bits )
@@ -330,7 +381,8 @@ uint PullNextBit( inout uint bits )
 }
 
 [RootSignature(ModelViewer_RootSig)]
-float3 main(VSOutput vsOutput) : SV_Target0
+//float3 main(VSOutput vsOutput) : SV_Target0
+void main(GSOutput vsOutput)
 {
     uint2 pixelPos = vsOutput.position.xy;
     float3 diffuseAlbedo = texDiffuse.Sample(sampler0, vsOutput.uv);
@@ -349,8 +401,13 @@ float3 main(VSOutput vsOutput) : SV_Target0
         normal = normalize(mul(normal, tbn));
     }
 
+#if 0
     float3 specularAlbedo = float3( 0.56, 0.56, 0.56 );
     float specularMask = texSpecular.Sample(sampler0, vsOutput.uv).g;
+#else
+    float3 specularAlbedo = float3(0.0, 0.0, 0.0);
+    float specularMask = 0.0;
+#endif
     float3 viewDir = normalize(vsOutput.viewDir);
     colorSum += ApplyDirectionalLight( diffuseAlbedo, specularAlbedo, specularMask, gloss, normal, viewDir, SunDirection, SunColor, vsOutput.shadowCoord );
 
@@ -636,25 +693,52 @@ float3 main(VSOutput vsOutput) : SV_Target0
     }
 #endif
 
-#if 1
-    float2 screenCoord = vsOutput.position.xy;
-    if ((screenCoord.x < 255.5) && (screenCoord.y < 255.5)) 
+    // this is bad, doesn't account for tracking dims
+    // or worrying about race conditions on write.
+    float3 svPos = vsOutput.position.xyz;
+
+
+    // xy coords are in screen space pixels, offset by +0.5
+    // ie: the 0th pixel has a position of (0.5, 0.5)
+    
+    // clamp to (0, 255) range
+    svPos.xy = max(svPos.xy, 0.0);
+    svPos.xy = min(svPos.xy, 255.0);
+
+    // z value should probably still be (0, 1)
+    svPos.z = saturate(svPos.z) * 255.0;
+
+    // convert to uint3 for sampling
+    uint3 voxelPos = uint3(svPos);
+
+    // Undo geometry shader swizzle for writing voxel data
+    if (0.0 < vsOutput.swizzle.x)
     {
-        uint3 voxelCoord = uint3(screenCoord.xy, 45u);
-        voxelCoord = max(voxelCoord, 0u);
-        voxelCoord = min(voxelCoord, 255u);
-
-        uint val = voxelBuffer[voxelCoord];
-        float3 valF = float3(
-            float((val & 0x000000ff)),
-            float((val & 0x0000ff00) >> 8u),
-            float((val & 0x00ff0000) >> 16u)
-        );
-
-        colorSum = valF.xyz * (1.0/255.0);
+        voxelPos.xyz = voxelPos.zyx;
     }
+    else if (0.0 < vsOutput.swizzle.y)
+    {
+        voxelPos.xyz = voxelPos.xzy;
+    }
+
+
+
+    // debug?
+    //voxelBuffer[voxelPos] += colorSum;
+    //voxelBuffer[voxelPos] += diffuseAlbedo; // svPos.xyz;
+
+
+
+
+#if 1
+    float4 newVal = float4(diffuseAlbedo, 1.0);
+    ImageAtomicAverage(voxelPos, newVal);
+#else
+    float4 newVal = float4(diffuseAlbedo, 1.0);
+    uint nuValU = PackUintFromFloat4(newVal);
+    uint oldVal;
+    InterlockedMax(voxelBuffer[voxelPos], nuValU);
 #endif
 
-
-    return colorSum;
+    return;// colorSum;
 }

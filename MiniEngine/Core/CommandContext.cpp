@@ -217,6 +217,11 @@ void CommandContext::BindDescriptorHeaps( void )
         m_CommandList->SetDescriptorHeaps(NonNullHeaps, HeapsToBind);
 }
 
+void GraphicsContext::SetNullRenderTarget(void)
+{
+    m_CommandList->OMSetRenderTargets(0, nullptr, FALSE, nullptr);
+}
+
 void GraphicsContext::SetRenderTargets( UINT NumRTVs, const D3D12_CPU_DESCRIPTOR_HANDLE RTVs[], D3D12_CPU_DESCRIPTOR_HANDLE DSV )
 {
     m_CommandList->OMSetRenderTargets( NumRTVs, RTVs, FALSE, &DSV );

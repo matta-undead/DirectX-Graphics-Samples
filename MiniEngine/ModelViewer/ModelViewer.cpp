@@ -53,6 +53,9 @@ static bool kShowFlag = false;
 #endif
 #include "CompiledShaders/WaveTileCountPS.h"
 
+#include "CompiledShaders/VoxelizeGS.h"
+#include "CompiledShaders/VoxelizePS.h"
+
 using namespace GameCore;
 using namespace Math;
 using namespace Graphics;
@@ -95,6 +98,14 @@ private:
     GraphicsPSO m_CutoutShadowPSO;
     GraphicsPSO m_WaveTileCountPSO;
 
+    enum { kVoxelDims = 256 };
+    Matrix4 m_VoxelViewProjMatrix;
+    D3D12_VIEWPORT m_VoxelViewport;
+    D3D12_RECT m_VoxelScissor;
+    GraphicsPSO m_VoxelizePSO;
+    ColorBuffer m_VoxelBuffer;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_VoxelBufferHandle;
+
     D3D12_CPU_DESCRIPTOR_HANDLE m_DefaultSampler;
     D3D12_CPU_DESCRIPTOR_HANDLE m_ShadowSampler;
     D3D12_CPU_DESCRIPTOR_HANDLE m_BiasedDefaultSampler;
@@ -127,7 +138,7 @@ void ModelViewer::Startup( void )
     SamplerDesc DefaultSamplerDesc;
     DefaultSamplerDesc.MaxAnisotropy = 8;
 
-    m_RootSig.Reset(5, 2);
+    m_RootSig.Reset(6, 2);
     m_RootSig.InitStaticSampler(0, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig.InitStaticSampler(1, SamplerShadowDesc, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[0].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
@@ -135,6 +146,7 @@ void ModelViewer::Startup( void )
     m_RootSig[2].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 6, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[3].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 64, 6, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[4].InitAsConstants(1, 2, D3D12_SHADER_VISIBILITY_VERTEX);
+    m_RootSig[5].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig.Finalize(L"ModelViewer", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     DXGI_FORMAT ColorFormat = g_SceneColorBuffer.GetFormat();
@@ -207,6 +219,30 @@ void ModelViewer::Startup( void )
     m_WaveTileCountPSO.SetPixelShader(g_pWaveTileCountPS, sizeof(g_pWaveTileCountPS));
     m_WaveTileCountPSO.Finalize();
 
+    m_VoxelViewport.TopLeftX = 0.0f;
+    m_VoxelViewport.TopLeftY = 0.0f;
+    m_VoxelViewport.Width = (float)kVoxelDims;
+    m_VoxelViewport.Height = (float)kVoxelDims;
+    m_VoxelViewport.MinDepth = 0.0f;
+    m_VoxelViewport.MaxDepth = 1.0f;
+
+    m_VoxelScissor.left = 0;
+    m_VoxelScissor.top = 0;
+    m_VoxelScissor.right = (LONG)kVoxelDims;
+    m_VoxelScissor.bottom = (LONG)kVoxelDims;
+
+    m_VoxelizePSO = m_DepthPSO;
+    m_VoxelizePSO.SetDepthStencilState(DepthStateDisabled);//DepthStateReadOnly);
+    m_VoxelizePSO.SetRenderTargetFormats(0, nullptr, DXGI_FORMAT_UNKNOWN);//, 8U);
+    m_VoxelizePSO.SetVertexShader(g_pModelViewerVS, sizeof(g_pModelViewerVS));
+#if 1
+    m_VoxelizePSO.SetGeometryShader(g_pVoxelizeGS, sizeof(g_pVoxelizeGS));
+    m_VoxelizePSO.SetPixelShader(g_pVoxelizePS, sizeof(g_pVoxelizePS));
+#else
+    m_VoxelizePSO.SetPixelShader( g_pVoxelizePS, sizeof(g_pVoxelizePS) );
+#endif
+    m_VoxelizePSO.Finalize();
+
     Lighting::InitializeResources();
 
     m_ExtraTextures[0] = g_SSAOFullScreen.GetSRV();
@@ -258,10 +294,15 @@ void ModelViewer::Startup( void )
     m_ExtraTextures[3] = Lighting::m_LightShadowArray.GetSRV();
     m_ExtraTextures[4] = Lighting::m_LightGrid.GetSRV();
     m_ExtraTextures[5] = Lighting::m_LightGridBitMask.GetSRV();
+
+    // format as uint32_t to allow interlocked atomics in shader
+    m_VoxelBuffer.Create3D( L"Voxel Buffer", kVoxelDims, kVoxelDims, kVoxelDims, 9, DXGI_FORMAT_R32_UINT );
+    m_VoxelBufferHandle = m_VoxelBuffer.GetUAV();
 }
 
 void ModelViewer::Cleanup( void )
 {
+    m_VoxelBuffer.Destroy();
     m_Model.Clear();
     Lighting::Shutdown();
 }
@@ -282,6 +323,46 @@ void ModelViewer::Update( float deltaT )
 
     m_CameraController->Update(deltaT);
     m_ViewProjMatrix = m_Camera.GetViewProjMatrix();
+
+    {
+        // get scene dimensions
+        const Model::BoundingBox& sceneBounds = m_Model.GetBoundingBox();
+        const Math::Vector3 center = (sceneBounds.min + sceneBounds.max) * 0.5f;
+
+        // boundsScale - focus voxel volume instead of encompassing full test scene?
+        // future version will want to have clip maps following front of camera...
+        const float boundsScale = 1.0f;
+        const Math::Vector3 halfExtent = (sceneBounds.max - center) * boundsScale;
+        const Math::Vector3 scaledMin = center - halfExtent;
+        const Math::Vector3 scaledMax = center + halfExtent;
+
+        const float l  = scaledMin.GetX();
+        const float r  = scaledMax.GetX();
+        const float t  = scaledMax.GetY();
+        const float b  = scaledMin.GetY();
+        const float zn = scaledMin.GetZ();
+        const float zf = scaledMax.GetZ();
+        Math::Matrix4 ortho2(
+            Math::Vector4(2.0f/(r-l),  0.0f,        0.0f,         0.0f),
+            Math::Vector4(0.0f,        2.0f/(t-b),  0.0f,         0.0f),
+            Math::Vector4(0.0f,        0.0f,        1.0f/(zf-zn), 0.0f),
+            Math::Vector4((l+r)/(l-r), (t+b)/(b-t), zn/(zn-zf),   1.0f)
+        );
+        
+        const Math::Vector3 eye(center.GetX(), center.GetY(), zn);
+        const Math::Vector3 at(center);
+        const Math::Vector3 up(0.0f, 1.0f, 0.0f);
+
+        Math::Camera voxelCam;
+        voxelCam.ReverseZ(false);
+        voxelCam.SetEyeAtUp(eye, at, up);
+        voxelCam.Update();
+        Math::Matrix4 zView3 = voxelCam.GetViewMatrix();
+
+        // compose orthographic view pos
+        m_VoxelViewProjMatrix = ortho2 * zView3;
+    }
+
 
     float costheta = cosf(m_SunOrientation);
     float sintheta = sinf(m_SunOrientation);
@@ -520,12 +601,42 @@ void ModelViewer::RenderScene( void )
         }
 
         {
+            ScopedTimer _prof4(L"Voxelize Scene", gfxContext);
+
+            // disable all framebuffer options, depth write, depth test, color writes
+            // set viewport resolution equal to voxel grid dimensions
+
+            gfxContext.SetDynamicDescriptors(3, 0, _countof(m_ExtraTextures), m_ExtraTextures);
+            gfxContext.SetDynamicConstantBufferView(1, sizeof(psConstants), &psConstants);
+
+            gfxContext.SetDynamicDescriptor(5, 0, m_VoxelBufferHandle);
+
+            gfxContext.SetPipelineState(m_VoxelizePSO);
+
+            gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
+            gfxContext.SetNullRenderTarget();
+
+            gfxContext.SetViewportAndScissor(m_VoxelViewport, m_VoxelScissor);
+
+            RenderObjects( gfxContext, m_VoxelViewProjMatrix, kOpaque );
+
+            // need cutout voxelize :(
+            //{
+            //    gfxContext.SetPipelineState(m_CutoutModelPSO);
+            //    RenderObjects( gfxContext, m_VoxelViewProjMatrix, kCutout );
+            //}
+        }
+
+        {
             ScopedTimer _prof4(L"Render Color", gfxContext);
 
             gfxContext.TransitionResource(g_SSAOFullScreen, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
             gfxContext.SetDynamicDescriptors(3, 0, _countof(m_ExtraTextures), m_ExtraTextures);
             gfxContext.SetDynamicConstantBufferView(1, sizeof(psConstants), &psConstants);
+
+            gfxContext.SetDynamicDescriptor(5, 0, m_VoxelBufferHandle);
+
 #ifdef _WAVE_OP
             gfxContext.SetPipelineState(EnableWaveOps ? m_ModelWaveOpsPSO : m_ModelPSO );
 #else
