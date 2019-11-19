@@ -68,7 +68,7 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
 
     GSOutput v;
     //v.position = float4(0.0, 0.0, 0.0, 1.0);
-    v.color = vsOutput[0].color + float4(0.2, 0.2, 0.02, 0.02);
+    v.color = vsOutput[0].color;
 
     // view is vector from world position of voxel towards eye
     float3 view = vsOutput[0].viewDir;

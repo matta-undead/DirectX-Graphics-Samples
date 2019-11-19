@@ -46,7 +46,7 @@ void main(triangle VSOutput vsOutput[3], inout TriangleStream<GSOutput> triStrea
     // dominant axis selection
     float3 v0 = normalize(vsOutput[1].worldPos - vsOutput[0].worldPos);
     float3 v1 = normalize(vsOutput[2].worldPos - vsOutput[0].worldPos);
-    float3 geometricNormal = cross(v0, v1);
+    float3 geometricNormal = abs(cross(v0, v1));
     float xSwizzle = 0.0;
     float ySwizzle = 0.0;
     if ((geometricNormal.x > geometricNormal.z) && (geometricNormal.x > geometricNormal.y))
@@ -66,11 +66,12 @@ void main(triangle VSOutput vsOutput[3], inout TriangleStream<GSOutput> triStrea
         vsOutput[2].position.xyz = vsOutput[2].position.zyx;
     }
     else if (0.0 < ySwizzle)
-    {
+    {        
         vsOutput[0].position.xyz = vsOutput[0].position.xzy;
-        vsOutput[0].position.xyz = vsOutput[0].position.xzy;
-        vsOutput[0].position.xyz = vsOutput[0].position.xzy;
+        vsOutput[1].position.xyz = vsOutput[1].position.xzy;
+        vsOutput[2].position.xyz = vsOutput[2].position.xzy;
     }
+
 
     // edge shifting ?
     {
