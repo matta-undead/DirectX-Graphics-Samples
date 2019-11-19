@@ -56,6 +56,11 @@ static bool kShowFlag = false;
 #include "CompiledShaders/VoxelizeGS.h"
 #include "CompiledShaders/VoxelizePS.h"
 
+#include "CompiledShaders/VoxelViewerVS.h"
+#include "CompiledShaders/VoxelViewerGS.h"
+#include "CompiledShaders/VoxelViewerPS.h"
+
+
 using namespace GameCore;
 using namespace Math;
 using namespace Graphics;
@@ -105,6 +110,12 @@ private:
     GraphicsPSO m_VoxelizePSO;
     ColorBuffer m_VoxelBuffer;
     D3D12_CPU_DESCRIPTOR_HANDLE m_VoxelBufferHandle;
+
+
+    RootSignature m_VoxelViewerRS;
+    GraphicsPSO m_VoxelViewerPSO;
+
+
 
     D3D12_CPU_DESCRIPTOR_HANDLE m_DefaultSampler;
     D3D12_CPU_DESCRIPTOR_HANDLE m_ShadowSampler;
@@ -299,6 +310,24 @@ void ModelViewer::Startup( void )
     // format as uint32_t to allow interlocked atomics in shader
     m_VoxelBuffer.Create3D( L"Voxel Buffer", kVoxelDims, kVoxelDims, kVoxelDims, 9, DXGI_FORMAT_R32_UINT );
     m_VoxelBufferHandle = m_VoxelBuffer.GetUAV();
+
+
+    m_VoxelViewerRS.Reset(2, 0);
+    m_VoxelViewerRS[0].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_ALL);
+    m_VoxelViewerRS[1].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 1, D3D12_SHADER_VISIBILITY_VERTEX);
+    m_VoxelViewerRS.Finalize(L"VoxelViewer", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+    m_VoxelViewerPSO.SetRootSignature(m_VoxelViewerRS);
+    m_VoxelViewerPSO.SetRasterizerState(RasterizerTwoSided);
+    m_VoxelViewerPSO.SetBlendState(BlendDisable);
+    m_VoxelViewerPSO.SetDepthStencilState(DepthStateReadWrite);
+    m_VoxelViewerPSO.SetInputLayout(0, nullptr);
+    m_VoxelViewerPSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT);
+    m_VoxelViewerPSO.SetRenderTargetFormats(1, &ColorFormat, DepthFormat);
+    m_VoxelViewerPSO.SetVertexShader( g_pVoxelViewerVS, sizeof(g_pVoxelViewerVS) );
+    m_VoxelViewerPSO.SetGeometryShader( g_pVoxelViewerGS, sizeof(g_pVoxelViewerGS) );
+    m_VoxelViewerPSO.SetPixelShader( g_pVoxelViewerPS, sizeof(g_pVoxelViewerPS) );
+    m_VoxelViewerPSO.Finalize();
 }
 
 void ModelViewer::Cleanup( void )
@@ -626,6 +655,8 @@ void ModelViewer::RenderScene( void )
             //    gfxContext.SetPipelineState(m_CutoutModelPSO);
             //    RenderObjects( gfxContext, m_VoxelViewProjMatrix, kCutout );
             //}
+
+            gfxContext.TransitionResource(m_VoxelBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         }
 
         {
@@ -655,7 +686,6 @@ void ModelViewer::RenderScene( void )
                 RenderObjects( gfxContext, m_ViewProjMatrix, kCutout );
             }
         }
-
     }
 
     // Some systems generate a per-pixel velocity buffer to better track dynamic and skinned meshes.  Everything
@@ -675,6 +705,50 @@ void ModelViewer::RenderScene( void )
         DepthOfField::Render(gfxContext, m_Camera.GetNearClip(), m_Camera.GetFarClip());
     else
         MotionBlur::RenderObjectBlur(gfxContext, g_VelocityBuffer);
+
+    // tack some debug drawing on the end to visualize voxels
+    {
+        gfxContext.SetRootSignature(m_VoxelViewerRS);
+        gfxContext.SetPipelineState(m_VoxelViewerPSO);
+
+        gfxContext.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_POINTLIST);
+
+        __declspec(align(16)) struct
+        {
+            Matrix4 worldToProjection;
+            XMFLOAT3 cameraPos;
+            XMFLOAT3 positionMul;
+            XMFLOAT3 positionAdd;
+        } voxelConstants;
+
+        voxelConstants.worldToProjection = m_ViewProjMatrix;
+        XMStoreFloat3(&voxelConstants.cameraPos, m_Camera.GetPosition());
+
+        const Vector3 & min = m_Model.GetBoundingBox().min;
+        const Vector3 & max = m_Model.GetBoundingBox().max;
+        const Vector3 span = (max - min) * (1.0f/kVoxelDims);
+        const Vector3 start = 0.5 * span + min;
+        XMStoreFloat3(&voxelConstants.positionMul, span);
+        XMStoreFloat3(&voxelConstants.positionAdd, start);
+
+        gfxContext.SetDynamicConstantBufferView(0, sizeof(voxelConstants), &voxelConstants);
+        gfxContext.SetDynamicDescriptor(1, 0, m_VoxelBuffer.GetSRV());
+
+        gfxContext.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
+        gfxContext.ClearColor(g_SceneColorBuffer);
+        gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, true);
+        gfxContext.ClearDepth(g_SceneDepthBuffer);
+
+        gfxContext.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV());
+        gfxContext.SetViewportAndScissor(m_MainViewport, m_MainScissor);
+        // draw the voxel grid using vertex id only.
+        // convert to point in vs, three camera facing quads in geometry shader.
+        gfxContext.Draw(256*256*256);
+
+        // restore
+        gfxContext.SetRootSignature(m_RootSig);
+        gfxContext.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    }
 
     gfxContext.Finish();
 }
