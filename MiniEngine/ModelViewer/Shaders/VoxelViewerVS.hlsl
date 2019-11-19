@@ -43,13 +43,10 @@ VSOutput main(in uint vertexId : SV_VertexID)
 
     // translate voxel grid position into world
     float3 gridPosition = float3(index3dFromFlatArray);
-    //float3 worldPosition = gridPosition * positionMul + positionAdd;
 
-    //float3 worldPosition = gridPosition * 1.0 - float3(31.5,11.5,31.5);
-    //worldPosition *= 50.0;
-
-    float3 worldPosition = gridPosition * 1.0 - float3(127.5,31.5,127.5);
-    worldPosition *= 5.0;
+    // positionMul is step from one voxel center to the next
+    // positionAdd is shift to 0th voxel. both in world space.
+    float3 worldPosition = gridPosition * positionMul + positionAdd;
 
     VSOutput vsOutput;
     vsOutput.position = mul(worldToProjection, float4(worldPosition, 1.0));

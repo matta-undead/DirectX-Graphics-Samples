@@ -76,7 +76,7 @@ void main(triangle VSOutput vsOutput[3], inout TriangleStream<GSOutput> triStrea
         vsOutput[2].position.xz = vsOutput[2].position.zx;
     }
     else if (0.0 < ySwizzle)
-    {        
+    {
         vsOutput[0].position.yz = vsOutput[0].position.zy;
         vsOutput[1].position.yz = vsOutput[1].position.zy;
         vsOutput[2].position.yz = vsOutput[2].position.zy;

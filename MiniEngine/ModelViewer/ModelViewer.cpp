@@ -716,20 +716,20 @@ void ModelViewer::RenderScene( void )
         __declspec(align(16)) struct
         {
             Matrix4 worldToProjection;
-            XMFLOAT3 cameraPos;
-            XMFLOAT3 positionMul;
-            XMFLOAT3 positionAdd;
+            Vector3 cameraPos;
+            Vector3 positionMul;
+            Vector3 positionAdd;
         } voxelConstants;
 
         voxelConstants.worldToProjection = m_ViewProjMatrix;
-        XMStoreFloat3(&voxelConstants.cameraPos, m_Camera.GetPosition());
+        voxelConstants.cameraPos = m_Camera.GetPosition();
 
         const Vector3 & min = m_Model.GetBoundingBox().min;
         const Vector3 & max = m_Model.GetBoundingBox().max;
         const Vector3 span = (max - min) * (1.0f/kVoxelDims);
-        const Vector3 start = 0.5 * span + min;
-        XMStoreFloat3(&voxelConstants.positionMul, span);
-        XMStoreFloat3(&voxelConstants.positionAdd, start);
+        const Vector3 start = 0.5f * span + min;
+        voxelConstants.positionMul = span;
+        voxelConstants.positionAdd = start;
 
         gfxContext.SetDynamicConstantBufferView(0, sizeof(voxelConstants), &voxelConstants);
         gfxContext.SetDynamicDescriptor(1, 0, m_VoxelBuffer.GetSRV());

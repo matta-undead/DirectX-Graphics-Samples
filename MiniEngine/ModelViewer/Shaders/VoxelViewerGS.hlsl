@@ -32,8 +32,9 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
     }
 #endif
 
-    // hack, not caring about actual voxel size for a bit
-    float3 offset = float3(2.5, 2.5, 2.5);
+    // positionMul stores step from one voxel center to next in
+    // world space. want to offset voxel corners by half dims.
+    float3 offset = positionMul * 0.5;
 
     float3 worldPosition = vsOutput[0].worldPos;
 
@@ -67,7 +68,6 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
     wp7 = mul(worldToProjection, float4(wp7.xyz, 1.0));
 
     GSOutput v;
-    //v.position = float4(0.0, 0.0, 0.0, 1.0);
     v.color = vsOutput[0].color;
 
     // view is vector from world position of voxel towards eye
@@ -76,7 +76,6 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
     if (view.x > 0.0)
     {
         // viewer located in positive x half space
-        // want face 3, 7, 5, 1
         v.position = wp3;
         triStream.Append(v);
         v.position = wp7;
@@ -88,7 +87,6 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
     }
     else {
         // viewer located in negative x half space
-        // want face 6, 2, 0, 4
         v.position = wp6;
         triStream.Append(v);
         v.position = wp2;
@@ -104,7 +102,6 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
     if (view.y > 0.0)
     {
         // viewer located in postive y half space
-        // want face 6, 7, 3, 2
         v.position = wp6;
         triStream.Append(v);
         v.position = wp7;
@@ -117,7 +114,6 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
     else
     {
         // viewer located in negative y half space
-        // want face 0, 1, 5, 4
         v.position = wp0;
         triStream.Append(v);
         v.position = wp1;
@@ -133,7 +129,6 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
     if (view.z > 0.0)
     {
         // viewer located in positive z half space
-        // want face 7, 6, 4, 5
         v.position = wp7;
         triStream.Append(v);
         v.position = wp6;
@@ -146,7 +141,6 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
     else
     {
         // viewer located in negative z half space
-        // want face 2, 3, 1, 0
         v.position = wp2;
         triStream.Append(v);
         v.position = wp3;
