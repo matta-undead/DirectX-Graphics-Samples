@@ -107,7 +107,8 @@ private:
     Matrix4 m_VoxelViewProjMatrix;
     D3D12_VIEWPORT m_VoxelViewport;
     D3D12_RECT m_VoxelScissor;
-    GraphicsPSO m_VoxelizePSO;
+    GraphicsPSO m_VoxelizeOpaquePSO;
+    GraphicsPSO m_VoxelizeCutoutPSO;
     ColorBuffer m_VoxelBuffer;
     D3D12_CPU_DESCRIPTOR_HANDLE m_VoxelBufferHandle;
 
@@ -242,18 +243,22 @@ void ModelViewer::Startup( void )
     m_VoxelScissor.right = (LONG)kVoxelDims;
     m_VoxelScissor.bottom = (LONG)kVoxelDims;
 
-    m_VoxelizePSO = m_DepthPSO;
-    m_VoxelizePSO.SetDepthStencilState(DepthStateDisabled);
+    m_VoxelizeOpaquePSO = m_DepthPSO;
+    m_VoxelizeOpaquePSO.SetDepthStencilState(DepthStateDisabled);
 
     // getting an error trying to specify multisample count for a null render target.
     // but using msaa is critical to one of the options for approximating conservative
     // rasterization when generating voxel data.
-    m_VoxelizePSO.SetRenderTargetFormats(0, nullptr, DXGI_FORMAT_UNKNOWN);//, 8U);
+    m_VoxelizeOpaquePSO.SetRenderTargetFormats(0, nullptr, DXGI_FORMAT_UNKNOWN);//, 8U);
 
-    m_VoxelizePSO.SetVertexShader(g_pModelViewerVS, sizeof(g_pModelViewerVS));
-    m_VoxelizePSO.SetGeometryShader(g_pVoxelizeGS, sizeof(g_pVoxelizeGS));
-    m_VoxelizePSO.SetPixelShader(g_pVoxelizePS, sizeof(g_pVoxelizePS));
-    m_VoxelizePSO.Finalize();
+    m_VoxelizeOpaquePSO.SetVertexShader(g_pModelViewerVS, sizeof(g_pModelViewerVS));
+    m_VoxelizeOpaquePSO.SetGeometryShader(g_pVoxelizeGS, sizeof(g_pVoxelizeGS));
+    m_VoxelizeOpaquePSO.SetPixelShader(g_pVoxelizePS, sizeof(g_pVoxelizePS));
+    m_VoxelizeOpaquePSO.Finalize();
+
+    m_VoxelizeCutoutPSO = m_VoxelizeOpaquePSO;
+    m_VoxelizeCutoutPSO.SetRasterizerState(RasterizerTwoSided);
+    m_VoxelizeCutoutPSO.Finalize();
 
     Lighting::InitializeResources();
 
@@ -641,7 +646,7 @@ void ModelViewer::RenderScene( void )
 
             gfxContext.SetDynamicDescriptor(5, 0, m_VoxelBufferHandle);
 
-            gfxContext.SetPipelineState(m_VoxelizePSO);
+            gfxContext.SetPipelineState(m_VoxelizeOpaquePSO);
 
             gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
             gfxContext.SetNullRenderTarget();
@@ -650,11 +655,10 @@ void ModelViewer::RenderScene( void )
 
             RenderObjects( gfxContext, m_VoxelViewProjMatrix, kOpaque );
 
-            // need cutout voxelize :(
-            //{
-            //    gfxContext.SetPipelineState(m_CutoutModelPSO);
-            //    RenderObjects( gfxContext, m_VoxelViewProjMatrix, kCutout );
-            //}
+            {
+                gfxContext.SetPipelineState(m_VoxelizeCutoutPSO);
+                RenderObjects( gfxContext, m_VoxelViewProjMatrix, kCutout );
+            }
 
             gfxContext.TransitionResource(m_VoxelBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         }

@@ -636,25 +636,5 @@ float3 main(VSOutput vsOutput) : SV_Target0
     }
 #endif
 
-#if 1
-    float2 screenCoord = vsOutput.position.xy;
-    if ((screenCoord.x < 255.5) && (screenCoord.y < 255.5)) 
-    {
-        uint3 voxelCoord = uint3(screenCoord.xy, 45u);
-        voxelCoord = max(voxelCoord, 0u);
-        voxelCoord = min(voxelCoord, 255u);
-
-        uint val = voxelBuffer[voxelCoord];
-        float3 valF = float3(
-            float((val & 0x000000ff)),
-            float((val & 0x0000ff00) >> 8u),
-            float((val & 0x00ff0000) >> 16u)
-        );
-
-        colorSum = valF.xyz * (1.0/255.0);
-    }
-#endif
-
-
     return colorSum;
 }
