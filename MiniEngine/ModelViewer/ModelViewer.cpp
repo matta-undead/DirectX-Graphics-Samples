@@ -53,6 +53,7 @@ static bool kShowFlag = false;
 #endif
 #include "CompiledShaders/WaveTileCountPS.h"
 
+#include "CompiledShaders/VoxelizeVS.h"
 #include "CompiledShaders/VoxelizeGS.h"
 #include "CompiledShaders/VoxelizePS.h"
 
@@ -246,18 +247,29 @@ void ModelViewer::Startup( void )
     m_VoxelizeOpaquePSO = m_DepthPSO;
     m_VoxelizeOpaquePSO.SetDepthStencilState(DepthStateDisabled);
 
-    // getting an error trying to specify multisample count for a null render target.
-    // but using msaa is critical to one of the options for approximating conservative
-    // rasterization when generating voxel data.
-    m_VoxelizeOpaquePSO.SetRenderTargetFormats(0, nullptr, DXGI_FORMAT_UNKNOWN);//, 8U);
+    // msaa is suggested as a possible alternative option to conservative rasterization, but
+    // getting an error trying to specify multisample count without a render target format.
+    // supplying a format anyway to be able to msaa sample count, still not getting msaa active.
+    // maybe missing a step elsewhere? but for now, using actual conservative raster feature.
+    m_VoxelizeOpaquePSO.SetRenderTargetFormats(0, nullptr, DXGI_FORMAT_UNKNOWN);
 
-    m_VoxelizeOpaquePSO.SetVertexShader(g_pModelViewerVS, sizeof(g_pModelViewerVS));
+    m_VoxelizeOpaquePSO.SetVertexShader(g_pVoxelizeVS, sizeof(g_pVoxelizeVS));
     m_VoxelizeOpaquePSO.SetGeometryShader(g_pVoxelizeGS, sizeof(g_pVoxelizeGS));
     m_VoxelizeOpaquePSO.SetPixelShader(g_pVoxelizePS, sizeof(g_pVoxelizePS));
+
+    // Try to enable conservative raster through api
+    D3D12_RASTERIZER_DESC RasterizerConservative = RasterizerDefault;
+    RasterizerConservative.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_ON;
+    m_VoxelizeOpaquePSO.SetRasterizerState(RasterizerConservative);
+
     m_VoxelizeOpaquePSO.Finalize();
 
     m_VoxelizeCutoutPSO = m_VoxelizeOpaquePSO;
-    m_VoxelizeCutoutPSO.SetRasterizerState(RasterizerTwoSided);
+
+    RasterizerConservative = RasterizerTwoSided;
+    RasterizerConservative.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_ON;
+    m_VoxelizeCutoutPSO.SetRasterizerState(RasterizerConservative);
+
     m_VoxelizeCutoutPSO.Finalize();
 
     Lighting::InitializeResources();
@@ -364,26 +376,22 @@ void ModelViewer::Update( float deltaT )
         const Model::BoundingBox& sceneBounds = m_Model.GetBoundingBox();
         const Math::Vector3 center = (sceneBounds.min + sceneBounds.max) * 0.5f;
 
-        // boundsScale - focus voxel volume instead of encompassing full test scene?
-        // future version will want to have clip maps following front of camera...
-        const float boundsScale = 1.0f;
-        const Math::Vector3 halfExtent = (sceneBounds.max - center) * boundsScale;
-        const Math::Vector3 scaledMin = center - halfExtent;
-        const Math::Vector3 scaledMax = center + halfExtent;
+        const Math::Vector3 smin = sceneBounds.min;
+        const Math::Vector3 smax = sceneBounds.max;
 
-        const float l  = scaledMin.GetX();
-        const float r  = scaledMax.GetX();
-        const float t  = scaledMax.GetY();
-        const float b  = scaledMin.GetY();
-        const float zn = scaledMin.GetZ();
-        const float zf = scaledMax.GetZ();
+        const float l  = smin.GetX();
+        const float r  = smax.GetX();
+        const float b  = smin.GetY();
+        const float t  = smax.GetY();
+        const float zn = smin.GetZ();
+        const float zf = smax.GetZ();
         Math::Matrix4 ortho2(
             Math::Vector4(2.0f/(r-l),  0.0f,        0.0f,         0.0f),
             Math::Vector4(0.0f,        2.0f/(t-b),  0.0f,         0.0f),
             Math::Vector4(0.0f,        0.0f,        1.0f/(zf-zn), 0.0f),
             Math::Vector4((l+r)/(l-r), (t+b)/(b-t), zn/(zn-zf),   1.0f)
         );
-        
+
         const Math::Vector3 eye(center.GetX(), center.GetY(), zn);
         const Math::Vector3 at(center);
         const Math::Vector3 up(0.0f, 1.0f, 0.0f);
@@ -391,6 +399,7 @@ void ModelViewer::Update( float deltaT )
         Math::Camera voxelCam;
         voxelCam.ReverseZ(false);
         voxelCam.SetEyeAtUp(eye, at, up);
+
         voxelCam.Update();
         Math::Matrix4 zView3 = voxelCam.GetViewMatrix();
 
@@ -637,21 +646,19 @@ void ModelViewer::RenderScene( void )
 
         {
             ScopedTimer _prof4(L"Voxelize Scene", gfxContext);
-
+            
             // disable all framebuffer options, depth write, depth test, color writes
             // set viewport resolution equal to voxel grid dimensions
 
             gfxContext.SetDynamicDescriptors(3, 0, _countof(m_ExtraTextures), m_ExtraTextures);
             gfxContext.SetDynamicConstantBufferView(1, sizeof(psConstants), &psConstants);
-
             gfxContext.SetDynamicDescriptor(5, 0, m_VoxelBufferHandle);
 
             gfxContext.SetPipelineState(m_VoxelizeOpaquePSO);
 
             gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
-            gfxContext.SetNullRenderTarget();
-
             gfxContext.SetViewportAndScissor(m_VoxelViewport, m_VoxelScissor);
+            gfxContext.SetNullRenderTarget();
 
             RenderObjects( gfxContext, m_VoxelViewProjMatrix, kOpaque );
 
@@ -711,6 +718,7 @@ void ModelViewer::RenderScene( void )
         MotionBlur::RenderObjectBlur(gfxContext, g_VelocityBuffer);
 
     // tack some debug drawing on the end to visualize voxels
+    if (1)
     {
         gfxContext.SetRootSignature(m_VoxelViewerRS);
         gfxContext.SetPipelineState(m_VoxelViewerPSO);

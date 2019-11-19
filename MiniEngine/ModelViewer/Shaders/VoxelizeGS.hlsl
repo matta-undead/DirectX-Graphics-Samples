@@ -96,6 +96,7 @@ void main(triangle VSOutput vsOutput[3], inout TriangleStream<GSOutput> triStrea
     vsOutput[2].position.z = vsOutput[2].position.z * 0.5 + 0.5;
 
     // edge shifting ?
+    // https://developer.nvidia.com/gpugems/GPUGems2/gpugems2_chapter42.html
     {
     }
     

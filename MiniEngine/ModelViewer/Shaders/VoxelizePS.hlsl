@@ -385,7 +385,9 @@ uint PullNextBit( inout uint bits )
 void main(GSOutput vsOutput)
 {
     uint2 pixelPos = vsOutput.position.xy;
+
     float3 diffuseAlbedo = texDiffuse.Sample(sampler0, vsOutput.uv);
+
     float3 colorSum = 0;
     {
         float ao = texSSAO[pixelPos];
@@ -704,7 +706,7 @@ void main(GSOutput vsOutput)
     // clamp to (0, 255) range
     svPos.xy = max(svPos.xy, 0.0);
     svPos.xy = min(svPos.xy, 255.0);
-
+    
     // z value should probably still be (0, 1)
     svPos.z = saturate(svPos.z) * 255.0;
 
@@ -731,6 +733,19 @@ void main(GSOutput vsOutput)
     // flip y-dir
     voxelPos.y = 255 - voxelPos.y;
 
+#if 1
+    // OR!
+    float3 worldPos = vsOutput.worldPos.xyz;
+    //float3 worldExtent = 
+
+    float3 worldMin = float3(-1920.94592, -126.442497, -1182.80713);
+    float3 worldMax = float3(1799.90808, 1429.43323, 1105.42603);
+
+    float3 normalizedWorld = (worldPos - worldMin) / (worldMax-worldMin);
+    normalizedWorld = saturate(normalizedWorld);
+    normalizedWorld = normalizedWorld * 255.0;
+    voxelPos = uint3(normalizedWorld);
+#endif
 
 
 #if 1
