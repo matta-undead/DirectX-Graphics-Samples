@@ -711,27 +711,34 @@ void main(GSOutput vsOutput)
     // convert to uint3 for sampling
     uint3 voxelPos = uint3(svPos);
 
+    // debug color to identify projected axis
+    float3 debugColor = float3(0.0, 0.0, 1.0);
+
     // Undo geometry shader swizzle for writing voxel data
     if (0.0 < vsOutput.swizzle.x)
     {
-        voxelPos.xyz = voxelPos.zyx;
+        voxelPos.xz = voxelPos.zx;
+
+        debugColor = float3(1.0, 0.0, 0.0);
     }
     else if (0.0 < vsOutput.swizzle.y)
     {
-        voxelPos.xyz = voxelPos.xzy;
+        voxelPos.yz = voxelPos.zy;
+
+        debugColor = float3(0.0, 1.0, 0.0);
     }
 
-
-
-    // debug?
-    //voxelBuffer[voxelPos] += colorSum;
-    //voxelBuffer[voxelPos] += diffuseAlbedo; // svPos.xyz;
-
+    // flip y-dir
+    voxelPos.y = 255 - voxelPos.y;
 
 
 
 #if 1
     float4 newVal = float4(diffuseAlbedo, 1.0);
+
+    // display projected axis
+    //newVal.xyz = 0.5*(newVal.xyz+debugColor);
+
     ImageAtomicAverage(voxelPos, newVal);
 #else
     float4 newVal = float4(diffuseAlbedo, 1.0);

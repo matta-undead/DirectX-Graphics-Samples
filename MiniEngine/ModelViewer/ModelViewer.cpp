@@ -318,7 +318,7 @@ void ModelViewer::Startup( void )
     m_VoxelViewerRS.Finalize(L"VoxelViewer", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     m_VoxelViewerPSO.SetRootSignature(m_VoxelViewerRS);
-    m_VoxelViewerPSO.SetRasterizerState(RasterizerTwoSided);
+    m_VoxelViewerPSO.SetRasterizerState(RasterizerDefault);
     m_VoxelViewerPSO.SetBlendState(BlendDisable);
     m_VoxelViewerPSO.SetDepthStencilState(DepthStateReadWrite);
     m_VoxelViewerPSO.SetInputLayout(0, nullptr);
