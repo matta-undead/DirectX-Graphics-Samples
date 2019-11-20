@@ -656,18 +656,18 @@ void ModelViewer::RenderScene( void )
 
             gfxContext.SetPipelineState(m_VoxelizeOpaquePSO);
 
-            gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
+            gfxContext.TransitionResource(m_VoxelBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+            gfxContext.ClearUAV(m_VoxelBuffer);
+
             gfxContext.SetViewportAndScissor(m_VoxelViewport, m_VoxelScissor);
             gfxContext.SetNullRenderTarget();
 
             RenderObjects( gfxContext, m_VoxelViewProjMatrix, kOpaque );
 
-            {
-                gfxContext.SetPipelineState(m_VoxelizeCutoutPSO);
-                RenderObjects( gfxContext, m_VoxelViewProjMatrix, kCutout );
-            }
+            gfxContext.SetPipelineState(m_VoxelizeCutoutPSO);
+            RenderObjects( gfxContext, m_VoxelViewProjMatrix, kCutout );
 
-            gfxContext.TransitionResource(m_VoxelBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            gfxContext.TransitionResource(m_VoxelBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
         }
 
         {
