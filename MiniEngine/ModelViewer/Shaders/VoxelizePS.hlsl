@@ -736,7 +736,6 @@ void main(GSOutput vsOutput)
 #if 1
     // OR!
     float3 worldPos = vsOutput.worldPos.xyz;
-    //float3 worldExtent = 
 
     float3 worldMin = float3(-1920.94592, -126.442497, -1182.80713);
     float3 worldMax = float3(1799.90808, 1429.43323, 1105.42603);

@@ -52,53 +52,27 @@ void main(triangle VSOutput vsOutput[3], inout TriangleStream<GSOutput> triStrea
     if ((geometricNormal.x > geometricNormal.z) && (geometricNormal.x > geometricNormal.y))
     {
         xSwizzle = 1.0;
-    }
-    else if ((geometricNormal.y > geometricNormal.z) && (geometricNormal.y > geometricNormal.x))
-    {
-        ySwizzle = 1.0;
-    }
-
-    {
-        // project into (-1, 1) space
-        vsOutput[0].position.xyz /= vsOutput[0].position.w;
-        vsOutput[1].position.xyz /= vsOutput[1].position.w;
-        vsOutput[2].position.xyz /= vsOutput[2].position.w;
-        vsOutput[0].position.w = 1.0;
-        vsOutput[1].position.w = 1.0;
-        vsOutput[2].position.w = 1.0;
-    }
-
-    // triangle projection
-    if (0.0 < xSwizzle)
-    {
         vsOutput[0].position.xz = vsOutput[0].position.zx;
         vsOutput[1].position.xz = vsOutput[1].position.zx;
         vsOutput[2].position.xz = vsOutput[2].position.zx;
     }
-    else if (0.0 < ySwizzle)
+    else if ((geometricNormal.y > geometricNormal.z) && (geometricNormal.y > geometricNormal.x))
     {
+        ySwizzle = 1.0;
         vsOutput[0].position.yz = vsOutput[0].position.zy;
         vsOutput[1].position.yz = vsOutput[1].position.zy;
         vsOutput[2].position.yz = vsOutput[2].position.zy;
-
-        vsOutput[0].position.z = -1.0 * vsOutput[0].position.z;
-        vsOutput[1].position.z = -1.0 * vsOutput[1].position.z;
-        vsOutput[2].position.z = -1.0 * vsOutput[2].position.z;
-
-        vsOutput[0].position.y = -1.0 * vsOutput[0].position.y;
-        vsOutput[1].position.y = -1.0 * vsOutput[1].position.y;
-        vsOutput[2].position.y = -1.0 * vsOutput[2].position.y;
     }
-
-    // pack Z to (0, 1) range
-    vsOutput[0].position.z = vsOutput[0].position.z * 0.5 + 0.5;
-    vsOutput[1].position.z = vsOutput[1].position.z * 0.5 + 0.5;
-    vsOutput[2].position.z = vsOutput[2].position.z * 0.5 + 0.5;
 
     // edge shifting ?
     // https://developer.nvidia.com/gpugems/GPUGems2/gpugems2_chapter42.html
     {
     }
+
+    // position currently in (0, 1), want clip space xy in (-1, 1)
+    vsOutput[0].position.xy = vsOutput[0].position.xy * 2.0 - 1.0;
+    vsOutput[1].position.xy = vsOutput[1].position.xy * 2.0 - 1.0;
+    vsOutput[2].position.xy = vsOutput[2].position.xy * 2.0 - 1.0;
     
     // Output
     GSOutput v;

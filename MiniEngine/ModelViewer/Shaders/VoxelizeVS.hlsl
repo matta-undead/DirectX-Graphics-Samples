@@ -47,13 +47,15 @@ VSOutput main(VSInput vsInput)
 {
     VSOutput vsOutput;
 
-    vsOutput.position = mul(modelToProjection, float4(vsInput.position, 1.0));
+    float3 worldMin = float3(-1920.94592, -126.442497, -1182.80713);
+    float3 worldMax = float3(1799.90808, 1429.43323, 1105.42603);
+    float3 normalizedWorld = (vsInput.position - worldMin) / (worldMax-worldMin);
+
+    vsOutput.position = float4(normalizedWorld, 1.0);
     vsOutput.worldPos = vsInput.position;
     vsOutput.texCoord = vsInput.texcoord0;
     vsOutput.viewDir = vsInput.position - ViewerPos;
     vsOutput.shadowCoord = mul(modelToShadow, float4(vsInput.position, 1.0)).xyz;
-
-    vsOutput.position.y *= 0.6;
 
     vsOutput.normal = vsInput.normal;
     vsOutput.tangent = vsInput.tangent;
