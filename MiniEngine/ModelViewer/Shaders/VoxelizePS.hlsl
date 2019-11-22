@@ -7,6 +7,12 @@
 // single-iteration loop
 #pragma warning (disable: 3557)
 
+// toggle light types on and off
+#define APPLY_AMBIENT_LIGHT             1
+#define APPLY_DIRECTIONAL_LIGHT         1
+// these are looking wrong right now
+#define APPLY_NON_DIRECTIONAL_LIGHTS    0
+
 struct VSOutput
 {
     sample float4 position : SV_Position;
@@ -389,11 +395,16 @@ void main(GSOutput vsOutput)
     float3 diffuseAlbedo = texDiffuse.Sample(sampler0, vsOutput.uv);
 
     float3 colorSum = 0;
+#if APPLY_AMBIENT_LIGHT
     {
-        float ao = texSSAO[pixelPos];
+        // ssao looking weird so turn off for now.
+        // anyway, probably don't want regular model occlusion applied to voxels?
+        float ao = 1.0; // texSSAO[pixelPos];
         colorSum += ApplyAmbientLight( diffuseAlbedo, ao, AmbientColor );
     }
+#endif
 
+#if APPLY_DIRECTIONAL_LIGHT
     float gloss = 128.0;
     float3 normal;
     {
@@ -403,7 +414,7 @@ void main(GSOutput vsOutput)
         normal = normalize(mul(normal, tbn));
     }
 
-#if 0
+#if 1
     float3 specularAlbedo = float3( 0.56, 0.56, 0.56 );
     float specularMask = texSpecular.Sample(sampler0, vsOutput.uv).g;
 #else
@@ -412,7 +423,9 @@ void main(GSOutput vsOutput)
 #endif
     float3 viewDir = normalize(vsOutput.viewDir);
     colorSum += ApplyDirectionalLight( diffuseAlbedo, specularAlbedo, specularMask, gloss, normal, viewDir, SunDirection, SunColor, vsOutput.shadowCoord );
+#endif
 
+#if APPLY_NON_DIRECTIONAL_LIGHTS
     uint2 tilePos = GetTilePos(pixelPos, InvTileDim.xy);
     uint tileIndex = GetTileIndex(tilePos, TileCount.x);
     uint tileOffset = GetTileOffset(tileIndex);
@@ -695,14 +708,12 @@ void main(GSOutput vsOutput)
     }
 #endif
 
-    // this is bad, doesn't account for tracking dims
-    // or worrying about race conditions on write.
-    float3 svPos = vsOutput.position.xyz;
-
-
+#endif // APPLY_NON_DIRECTIONAL_LIGHTS
+    
     // xy coords are in screen space pixels, offset by +0.5
     // ie: the 0th pixel has a position of (0.5, 0.5)
-    
+    float3 svPos = vsOutput.position.xyz;
+
     // clamp to (0, 255) range
     svPos.xy = max(svPos.xy, 0.0);
     svPos.xy = min(svPos.xy, 255.0);
@@ -752,6 +763,9 @@ void main(GSOutput vsOutput)
 
     // display projected axis
     //newVal.xyz = 0.5*(newVal.xyz+debugColor);
+#if APPLY_AMBIENT_LIGHT || APPLY_DIRECTIONAL_LIGHT || APPLY_NON_DIRECTIONAL_LIGHTS
+    newVal.xyz = colorSum / (1.0+colorSum);
+#endif
 
     ImageAtomicAverage(voxelPos, newVal);
 #else
