@@ -108,8 +108,7 @@ private:
     Matrix4 m_VoxelViewProjMatrix;
     D3D12_VIEWPORT m_VoxelViewport;
     D3D12_RECT m_VoxelScissor;
-    GraphicsPSO m_VoxelizeOpaquePSO;
-    GraphicsPSO m_VoxelizeCutoutPSO;
+    GraphicsPSO m_VoxelizePSO;
     ColorBuffer m_VoxelBuffer;
     D3D12_CPU_DESCRIPTOR_HANDLE m_VoxelBufferHandle;
 
@@ -244,33 +243,25 @@ void ModelViewer::Startup( void )
     m_VoxelScissor.right = (LONG)kVoxelDims;
     m_VoxelScissor.bottom = (LONG)kVoxelDims;
 
-    m_VoxelizeOpaquePSO = m_DepthPSO;
-    m_VoxelizeOpaquePSO.SetDepthStencilState(DepthStateDisabled);
+    m_VoxelizePSO = m_DepthPSO;
+    m_VoxelizePSO.SetDepthStencilState(DepthStateDisabled);
 
     // msaa is suggested as a possible alternative option to conservative rasterization, but
     // getting an error trying to specify multisample count without a render target format.
     // supplying a format anyway to be able to msaa sample count, still not getting msaa active.
     // maybe missing a step elsewhere? but for now, using actual conservative raster feature.
-    m_VoxelizeOpaquePSO.SetRenderTargetFormats(0, nullptr, DXGI_FORMAT_UNKNOWN);
+    m_VoxelizePSO.SetRenderTargetFormats(0, nullptr, DXGI_FORMAT_UNKNOWN);
 
-    m_VoxelizeOpaquePSO.SetVertexShader(g_pVoxelizeVS, sizeof(g_pVoxelizeVS));
-    m_VoxelizeOpaquePSO.SetGeometryShader(g_pVoxelizeGS, sizeof(g_pVoxelizeGS));
-    m_VoxelizeOpaquePSO.SetPixelShader(g_pVoxelizePS, sizeof(g_pVoxelizePS));
+    m_VoxelizePSO.SetVertexShader(g_pVoxelizeVS, sizeof(g_pVoxelizeVS));
+    m_VoxelizePSO.SetGeometryShader(g_pVoxelizeGS, sizeof(g_pVoxelizeGS));
+    m_VoxelizePSO.SetPixelShader(g_pVoxelizePS, sizeof(g_pVoxelizePS));
 
     // Try to enable conservative raster through api
-    D3D12_RASTERIZER_DESC RasterizerConservative = RasterizerDefault;
+    D3D12_RASTERIZER_DESC RasterizerConservative = RasterizerTwoSided;
     RasterizerConservative.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_ON;
-    m_VoxelizeOpaquePSO.SetRasterizerState(RasterizerConservative);
+    m_VoxelizePSO.SetRasterizerState(RasterizerConservative);
 
-    m_VoxelizeOpaquePSO.Finalize();
-
-    m_VoxelizeCutoutPSO = m_VoxelizeOpaquePSO;
-
-    RasterizerConservative = RasterizerTwoSided;
-    RasterizerConservative.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_ON;
-    m_VoxelizeCutoutPSO.SetRasterizerState(RasterizerConservative);
-
-    m_VoxelizeCutoutPSO.Finalize();
+    m_VoxelizePSO.Finalize();
 
     Lighting::InitializeResources();
 
@@ -654,7 +645,7 @@ void ModelViewer::RenderScene( void )
             gfxContext.SetDynamicConstantBufferView(1, sizeof(psConstants), &psConstants);
             gfxContext.SetDynamicDescriptor(5, 0, m_VoxelBufferHandle);
 
-            gfxContext.SetPipelineState(m_VoxelizeOpaquePSO);
+            gfxContext.SetPipelineState(m_VoxelizePSO);
 
             gfxContext.TransitionResource(m_VoxelBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
             gfxContext.ClearUAV(m_VoxelBuffer);
@@ -662,10 +653,7 @@ void ModelViewer::RenderScene( void )
             gfxContext.SetViewportAndScissor(m_VoxelViewport, m_VoxelScissor);
             gfxContext.SetNullRenderTarget();
 
-            RenderObjects( gfxContext, m_VoxelViewProjMatrix, kOpaque );
-
-            gfxContext.SetPipelineState(m_VoxelizeCutoutPSO);
-            RenderObjects( gfxContext, m_VoxelViewProjMatrix, kCutout );
+            RenderObjects(gfxContext, m_VoxelViewProjMatrix);
 
             gfxContext.TransitionResource(m_VoxelBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
         }
