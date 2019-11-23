@@ -1,6 +1,8 @@
 
 #include "ModelViewerRS.hlsli"
 
+#define USE_SMALL_TRIANGLE_CULLING      0
+
 struct VSOutput
 {
     sample float4 position : SV_Position;
@@ -68,6 +70,25 @@ void main(triangle VSOutput vsOutput[3], inout TriangleStream<GSOutput> triStrea
     // https://developer.nvidia.com/gpugems/GPUGems2/gpugems2_chapter42.html
     {
     }
+
+#if USE_SMALL_TRIANGLE_CULLING
+    // small triangle culling
+    // Optimizing the Graphics Pipeline with Compute - Frostbite - GDC 2016
+    // slide 53/59
+    // if bounding box enclosing 2D projection of triangle does not touch
+    // pixel center, nothing will be rasterized. may be some false positives
+    // but that's probaly ok. use that test to skip outputting the triangle.
+    // from vertex shader and swizzle above, we have normalized output position
+    // from (0, 1) in xy. scale by voxel dims (hardcoded here to 256 for now)
+    // and round to get integer coords suitable for comparison.
+    float2 aabbMin = min(vsOutput[0].position.xy, min(vsOutput[1].position.xy, vsOutput[2].position.xy));
+    float2 aabbMax = max(vsOutput[0].position.xy, max(vsOutput[1].position.xy, vsOutput[2].position.xy));
+    aabbMin = aabbMin * 256.0;
+    aabbMax = aabbMax * 256.0;
+    if (any(round(aabbMin) == round(aabbMax))) {
+        return;
+    }
+#endif
 
     // position currently in (0, 1), want clip space xy in (-1, 1)
     vsOutput[0].position.xy = vsOutput[0].position.xy * 2.0 - 1.0;
