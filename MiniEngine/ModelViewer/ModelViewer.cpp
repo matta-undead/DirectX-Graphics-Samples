@@ -741,9 +741,13 @@ void ModelViewer::RenderScene( void )
 
         gfxContext.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV());
         gfxContext.SetViewportAndScissor(m_MainViewport, m_MainScissor);
-        // draw the voxel grid using vertex id only.
-        // convert to point in vs, three camera facing quads in geometry shader.
-        gfxContext.Draw(256*256*256);
+        // draw the voxel grid using vertex id and instance id only.
+        // convert to point in vertex shader, three camera facing quads in geometry shader.
+        const uint32_t pointCount = (kVoxelDims*kVoxelDims*kVoxelDims);
+        const uint32_t drawCount = 256;
+        const uint32_t pointsPerDraw = pointCount / drawCount;
+
+        gfxContext.DrawInstanced(pointsPerDraw, drawCount);
 
         // restore
         gfxContext.SetRootSignature(m_RootSig);

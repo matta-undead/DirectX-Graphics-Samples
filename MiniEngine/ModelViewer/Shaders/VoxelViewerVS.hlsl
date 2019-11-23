@@ -18,16 +18,23 @@ struct VSOutput
 
 Texture3D<uint> voxelBuffer : register(t0);
 
-VSOutput main(in uint vertexId : SV_VertexID)
+#define DRAW_COUNT  256
+
+VSOutput main(
+    in uint vertexId : SV_VertexID,
+    in uint instanceId : SV_InstanceID
+)
 {
     // vertex id as integer index of flattened 3D array.
     // transform back into x,y,z indicies for texture lookup
     uint kWidth = 256;
     uint kPageSize = (256*256);
+    uint flatIndex = ((kWidth*kPageSize/DRAW_COUNT)*instanceId) + vertexId;
+
     uint3 index3dFromFlatArray = uint3(
-        vertexId % kWidth,
-        (vertexId % kPageSize) / kWidth,
-        vertexId / kPageSize
+        flatIndex % kWidth,
+        (flatIndex % kPageSize) / kWidth,
+        flatIndex / kPageSize
     );
 
     // read value from 3D voxel texture and convert to color
