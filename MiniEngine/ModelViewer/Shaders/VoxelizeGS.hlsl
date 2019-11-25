@@ -1,7 +1,7 @@
 
 #include "ModelViewerRS.hlsli"
 
-#define USE_SMALL_TRIANGLE_CULLING      0
+#define USE_SMALL_TRIANGLE_CULLING      1
 
 struct VSOutput
 {

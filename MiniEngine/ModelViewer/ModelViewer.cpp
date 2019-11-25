@@ -706,7 +706,7 @@ void ModelViewer::RenderScene( void )
         MotionBlur::RenderObjectBlur(gfxContext, g_VelocityBuffer);
 
     // tack some debug drawing on the end to visualize voxels
-    if (1)
+    if (0)
     {
         gfxContext.SetRootSignature(m_VoxelViewerRS);
         gfxContext.SetPipelineState(m_VoxelViewerPSO);
