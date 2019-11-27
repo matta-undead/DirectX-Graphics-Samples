@@ -62,6 +62,9 @@ static bool kShowFlag = false;
 #include "CompiledShaders/VoxelViewerGS.h"
 #include "CompiledShaders/VoxelViewerPS.h"
 
+#include "CompiledShaders/VctModelViewerVS.h"
+#include "CompiledShaders/VctModelViewerPS.h"
+
 
 using namespace GameCore;
 using namespace Math;
@@ -119,7 +122,7 @@ private:
     D3D12_CPU_DESCRIPTOR_HANDLE m_ShadowSampler;
     D3D12_CPU_DESCRIPTOR_HANDLE m_BiasedDefaultSampler;
 
-    D3D12_CPU_DESCRIPTOR_HANDLE m_ExtraTextures[6];
+    D3D12_CPU_DESCRIPTOR_HANDLE m_ExtraTextures[7];
     Model m_Model;
     std::vector<bool> m_pMaterialIsCutout;
 
@@ -147,13 +150,19 @@ void ModelViewer::Startup( void )
     SamplerDesc DefaultSamplerDesc;
     DefaultSamplerDesc.MaxAnisotropy = 8;
 
-    m_RootSig.Reset(6, 2);
+    m_RootSig.Reset(6, 3);
     m_RootSig.InitStaticSampler(0, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig.InitStaticSampler(1, SamplerShadowDesc, D3D12_SHADER_VISIBILITY_PIXEL);
+
+    // Repurpose default desc, with overrides for voxel sampler
+    DefaultSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    DefaultSamplerDesc.SetTextureAddressMode(D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+    m_RootSig.InitStaticSampler(2, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
+
     m_RootSig[0].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
     m_RootSig[1].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[2].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 6, D3D12_SHADER_VISIBILITY_PIXEL);
-    m_RootSig[3].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 64, 6, D3D12_SHADER_VISIBILITY_PIXEL);
+    m_RootSig[3].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 64, 7, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[4].InitAsConstants(1, 2, D3D12_SHADER_VISIBILITY_VERTEX);
     m_RootSig[5].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig.Finalize(L"ModelViewer", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -204,8 +213,8 @@ void ModelViewer::Startup( void )
     m_ModelPSO.SetBlendState(BlendDisable);
     m_ModelPSO.SetDepthStencilState(DepthStateTestEqual);
     m_ModelPSO.SetRenderTargetFormats(1, &ColorFormat, DepthFormat);
-    m_ModelPSO.SetVertexShader( g_pModelViewerVS, sizeof(g_pModelViewerVS) );
-    m_ModelPSO.SetPixelShader( g_pModelViewerPS, sizeof(g_pModelViewerPS) );
+    m_ModelPSO.SetVertexShader( g_pVctModelViewerVS, sizeof(g_pVctModelViewerVS) );
+    m_ModelPSO.SetPixelShader( g_pVctModelViewerPS, sizeof(g_pVctModelViewerPS) );
     m_ModelPSO.Finalize();
 
 #ifdef _WAVE_OP
@@ -313,6 +322,8 @@ void ModelViewer::Startup( void )
     m_ExtraTextures[5] = Lighting::m_LightGridBitMask.GetSRV();
 
     VoxelConeTracing::Initialize();
+
+    m_ExtraTextures[6] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels).GetSRV();
 
     m_VoxelViewerRS.Reset(2, 0);
     m_VoxelViewerRS[0].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_ALL);
@@ -704,7 +715,7 @@ void ModelViewer::RenderScene( void )
         MotionBlur::RenderObjectBlur(gfxContext, g_VelocityBuffer);
 
     // tack some debug drawing on the end to visualize voxels
-    if (1)
+    if (0)
     {
         gfxContext.SetRootSignature(m_VoxelViewerRS);
         gfxContext.SetPipelineState(m_VoxelViewerPSO);
