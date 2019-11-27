@@ -8,7 +8,7 @@
 #pragma warning (disable: 3557)
 
 // toggle light types on and off
-#define APPLY_AMBIENT_LIGHT             1
+#define APPLY_AMBIENT_LIGHT             0
 #define APPLY_DIRECTIONAL_LIGHT         1
 // these are looking wrong right now
 #define APPLY_NON_DIRECTIONAL_LIGHTS    0
