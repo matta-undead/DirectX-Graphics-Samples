@@ -223,6 +223,9 @@
     <ClCompile Include="ForwardPlusLighting.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="VoxelConeTracing.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\ModelViewerVS.hlsl">
@@ -270,12 +273,18 @@
     <FxCompile Include="Shaders\VoxelizeVS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\DownsampleConvertVoxelBufferCS.hlsl">
+    <FxCompile Include="Shaders\VctDownsampleConvertVoxelBufferCS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\VctDownsampleVoxelBufferCS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ForwardPlusLighting.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="VoxelConeTracing.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

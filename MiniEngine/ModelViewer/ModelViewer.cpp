@@ -33,6 +33,7 @@
 #include "ParticleEffectManager.h"
 #include "GameInput.h"
 #include "./ForwardPlusLighting.h"
+#include "./VoxelConeTracing.h"
 
 // To enable wave intrinsics, uncomment this macro and #define DXIL in Core/GraphcisCore.cpp.
 // Run CompileSM6Test.bat to compile the relevant shaders with DXC.
@@ -104,18 +105,14 @@ private:
     GraphicsPSO m_CutoutShadowPSO;
     GraphicsPSO m_WaveTileCountPSO;
 
-    enum { kVoxelDims = 256 };
+
     Matrix4 m_VoxelViewProjMatrix;
     D3D12_VIEWPORT m_VoxelViewport;
     D3D12_RECT m_VoxelScissor;
     GraphicsPSO m_VoxelizePSO;
-    ColorBuffer m_VoxelBuffer;
-    D3D12_CPU_DESCRIPTOR_HANDLE m_VoxelBufferHandle;
-
 
     RootSignature m_VoxelViewerRS;
     GraphicsPSO m_VoxelViewerPSO;
-
 
 
     D3D12_CPU_DESCRIPTOR_HANDLE m_DefaultSampler;
@@ -233,15 +230,15 @@ void ModelViewer::Startup( void )
 
     m_VoxelViewport.TopLeftX = 0.0f;
     m_VoxelViewport.TopLeftY = 0.0f;
-    m_VoxelViewport.Width = (float)kVoxelDims;
-    m_VoxelViewport.Height = (float)kVoxelDims;
+    m_VoxelViewport.Width = (float)VoxelConeTracing::kVoxelDims;
+    m_VoxelViewport.Height = (float)VoxelConeTracing::kVoxelDims;
     m_VoxelViewport.MinDepth = 0.0f;
     m_VoxelViewport.MaxDepth = 1.0f;
 
     m_VoxelScissor.left = 0;
     m_VoxelScissor.top = 0;
-    m_VoxelScissor.right = (LONG)kVoxelDims;
-    m_VoxelScissor.bottom = (LONG)kVoxelDims;
+    m_VoxelScissor.right = (LONG)VoxelConeTracing::kVoxelDims;
+    m_VoxelScissor.bottom = (LONG)VoxelConeTracing::kVoxelDims;
 
     m_VoxelizePSO = m_DepthPSO;
     m_VoxelizePSO.SetDepthStencilState(DepthStateDisabled);
@@ -315,10 +312,7 @@ void ModelViewer::Startup( void )
     m_ExtraTextures[4] = Lighting::m_LightGrid.GetSRV();
     m_ExtraTextures[5] = Lighting::m_LightGridBitMask.GetSRV();
 
-    // format as uint32_t to allow interlocked atomics in shader
-    m_VoxelBuffer.Create3D( L"Voxel Buffer", kVoxelDims, kVoxelDims, kVoxelDims, 9, DXGI_FORMAT_R32_UINT );
-    m_VoxelBufferHandle = m_VoxelBuffer.GetUAV();
-
+    VoxelConeTracing::Initialize();
 
     m_VoxelViewerRS.Reset(2, 0);
     m_VoxelViewerRS[0].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_ALL);
@@ -340,7 +334,7 @@ void ModelViewer::Startup( void )
 
 void ModelViewer::Cleanup( void )
 {
-    m_VoxelBuffer.Destroy();
+    VoxelConeTracing::Shutdown();
     m_Model.Clear();
     Lighting::Shutdown();
 }
@@ -643,20 +637,24 @@ void ModelViewer::RenderScene( void )
 
             gfxContext.SetDynamicDescriptors(3, 0, _countof(m_ExtraTextures), m_ExtraTextures);
             gfxContext.SetDynamicConstantBufferView(1, sizeof(psConstants), &psConstants);
-            gfxContext.SetDynamicDescriptor(5, 0, m_VoxelBufferHandle);
+            gfxContext.SetDynamicDescriptor(5, 0, VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::InitialVoxelization).GetUAV());
 
             gfxContext.SetPipelineState(m_VoxelizePSO);
 
-            gfxContext.TransitionResource(m_VoxelBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-            gfxContext.ClearUAV(m_VoxelBuffer);
+            ColorBuffer& voxelBuffer = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::InitialVoxelization);
+
+            gfxContext.TransitionResource(voxelBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+            gfxContext.ClearUAV(voxelBuffer);
 
             gfxContext.SetViewportAndScissor(m_VoxelViewport, m_VoxelScissor);
             gfxContext.SetNullRenderTarget();
 
             RenderObjects(gfxContext, m_VoxelViewProjMatrix);
 
-            gfxContext.TransitionResource(m_VoxelBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
+            gfxContext.TransitionResource(voxelBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
         }
+
+        VoxelConeTracing::DownsampleVoxelBuffer(gfxContext);
 
         {
             ScopedTimer _prof4(L"Render Color", gfxContext);
@@ -666,7 +664,7 @@ void ModelViewer::RenderScene( void )
             gfxContext.SetDynamicDescriptors(3, 0, _countof(m_ExtraTextures), m_ExtraTextures);
             gfxContext.SetDynamicConstantBufferView(1, sizeof(psConstants), &psConstants);
 
-            gfxContext.SetDynamicDescriptor(5, 0, m_VoxelBufferHandle);
+            gfxContext.SetDynamicDescriptor(5, 0, VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::InitialVoxelization).GetUAV());
 
 #ifdef _WAVE_OP
             gfxContext.SetPipelineState(EnableWaveOps ? m_ModelWaveOpsPSO : m_ModelPSO );
@@ -706,7 +704,7 @@ void ModelViewer::RenderScene( void )
         MotionBlur::RenderObjectBlur(gfxContext, g_VelocityBuffer);
 
     // tack some debug drawing on the end to visualize voxels
-    if (0)
+    if (1)
     {
         gfxContext.SetRootSignature(m_VoxelViewerRS);
         gfxContext.SetPipelineState(m_VoxelViewerPSO);
@@ -723,16 +721,18 @@ void ModelViewer::RenderScene( void )
 
         voxelConstants.worldToProjection = m_ViewProjMatrix;
         voxelConstants.cameraPos = m_Camera.GetPosition();
+        
+        const uint32_t voxelDims = VoxelConeTracing::GetVoxelBufferDims(VoxelConeTracing::BufferType::FilteredVoxels);
 
         const Vector3 & min = m_Model.GetBoundingBox().min;
         const Vector3 & max = m_Model.GetBoundingBox().max;
-        const Vector3 span = (max - min) * (1.0f/kVoxelDims);
+        const Vector3 span = (max - min) * (1.0f/voxelDims);
         const Vector3 start = 0.5f * span + min;
         voxelConstants.positionMul = span;
         voxelConstants.positionAdd = start;
 
         gfxContext.SetDynamicConstantBufferView(0, sizeof(voxelConstants), &voxelConstants);
-        gfxContext.SetDynamicDescriptor(1, 0, m_VoxelBuffer.GetSRV());
+        gfxContext.SetDynamicDescriptor(1, 0, VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels).GetSRV());
 
         gfxContext.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
         gfxContext.ClearColor(g_SceneColorBuffer);
@@ -743,7 +743,7 @@ void ModelViewer::RenderScene( void )
         gfxContext.SetViewportAndScissor(m_MainViewport, m_MainScissor);
         // draw the voxel grid using vertex id and instance id only.
         // convert to point in vertex shader, three camera facing quads in geometry shader.
-        const uint32_t pointCount = (kVoxelDims*kVoxelDims*kVoxelDims);
+        const uint32_t pointCount = (voxelDims*voxelDims*voxelDims);
         const uint32_t drawCount = 256;
         const uint32_t pointsPerDraw = pointCount / drawCount;
 

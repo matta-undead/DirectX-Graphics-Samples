@@ -68,7 +68,7 @@ public:
     // Get pre-created CPU-visible descriptor handles
     const D3D12_CPU_DESCRIPTOR_HANDLE& GetSRV(void) const { return m_SRVHandle; }
     const D3D12_CPU_DESCRIPTOR_HANDLE& GetRTV(void) const { return m_RTVHandle; }
-    const D3D12_CPU_DESCRIPTOR_HANDLE& GetUAV(void) const { return m_UAVHandle[0]; }
+    const D3D12_CPU_DESCRIPTOR_HANDLE& GetUAV(uint32_t mipLevel = 0) const { return m_UAVHandle[mipLevel]; }
 
     void SetClearColor( Color ClearColor ) { m_ClearColor = ClearColor; }
 

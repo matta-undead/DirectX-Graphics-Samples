@@ -16,7 +16,7 @@ struct VSOutput
     float3 viewDir : TexCoord1;
 };
 
-Texture3D<uint> voxelBuffer : register(t0);
+Texture3D<float4> voxelBuffer : register(t0);
 
 #define DRAW_COUNT  256
 
@@ -27,8 +27,8 @@ VSOutput main(
 {
     // vertex id as integer index of flattened 3D array.
     // transform back into x,y,z indicies for texture lookup
-    uint kWidth = 256;
-    uint kPageSize = (256*256);
+    uint kWidth = 128;
+    uint kPageSize = (128*128);
     uint flatIndex = ((kWidth*kPageSize/DRAW_COUNT)*instanceId) + vertexId;
 
     uint3 index3dFromFlatArray = uint3(
@@ -37,6 +37,7 @@ VSOutput main(
         flatIndex / kPageSize
     );
 
+#if 0
     // read value from 3D voxel texture and convert to color
     // load instead of sample to avoid filtering, want mip 0
     uint val = voxelBuffer.Load(uint4(index3dFromFlatArray, 0));
@@ -47,6 +48,8 @@ VSOutput main(
         float((val & 0xff000000) >> 24u)
     );
     valF *= (1.0/255.0);
+#endif
+    float4 valF = voxelBuffer.Load(uint4(index3dFromFlatArray, 0));
 
     // translate voxel grid position into world
     float3 gridPosition = float3(index3dFromFlatArray);

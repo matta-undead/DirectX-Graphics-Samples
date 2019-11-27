@@ -25,14 +25,6 @@ float4 UnpackValConvertAlpha(uint val)
     return valF;
 }
 
-
-#define _RootSig \
-    "RootFlags(0), " \
-    "CBV(b0), " \
-    "DescriptorTable(UAV(u0, numDescriptors = 2))"
-
-
-[RootSignature(_RootSig)]
 [numthreads(WORK_GROUP_SIZE_X, WORK_GROUP_SIZE_Y, WORK_GROUP_SIZE_Z)]
 void main(
     uint3 globalID : SV_DispatchThreadID,
