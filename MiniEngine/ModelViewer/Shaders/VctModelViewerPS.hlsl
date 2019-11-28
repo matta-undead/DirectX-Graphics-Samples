@@ -2,10 +2,11 @@
 // from MiniEngine. Modifying to add voxel cone tracing. Did
 // not receive feedback :)
 
-#define VCT_APPLY_DIRECTIONAL_LIGHT     1
-#define VCT_APPLY_AMBIENT_LIGHT         0
-#define VCT_APPLY_ADDITIONAL_LIGHTS     0
-#define VCT_APPLY_INDIRECT_LIGHT        1
+#define VCT_APPLY_DIRECTIONAL_LIGHT             1
+#define VCT_APPLY_AMBIENT_LIGHT                 0
+#define VCT_APPLY_ADDITIONAL_LIGHTS             0
+#define VCT_APPLY_INDIRECT_LIGHT                1
+#define VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI    1
 
 #define CONE_DIR_0      float3(0.0, 1.0, 0.0)
 #define CONE_DIR_1      float3(0.0, 0.5, 0.866025)
@@ -14,8 +15,14 @@
 #define CONE_DIR_4      float3(-0.509037, 0.5, -0.700629)
 #define CONE_DIR_5      float3(-0.823639, 0.5, 0.267617)
 
-#define CONE_WEIGHT_UP      (5.0/20.0)
-#define CONE_WEIGHT_SIDE    (3.0/20.0)
+#if VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI
+    #define CONE_WEIGHT_UP      (5.0*3.14159/20.0)
+    #define CONE_WEIGHT_SIDE    (3.0*3.14159/20.0)
+#else
+    #define CONE_WEIGHT_UP      (5.0/20.0)
+    #define CONE_WEIGHT_SIDE    (3.0/20.0)
+#endif
+
 
 //
 // Copyright (c) Microsoft. All rights reserved.
@@ -355,27 +362,38 @@ float3 TraceCone(float3 voxelPos, float3 voxelStep)
     float transmitted = 1.0;
     float3 indirectLight = float3(0.0, 0.0, 0.0);
 
-    voxelPos += 1.0 * voxelStep;
-    float4 voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 0.0);
-    indirectLight = voxelSample.xyz * (transmitted); // * voxelSample.w);
-    opacity += voxelSample.w * transmitted;
-    transmitted = saturate(1.0 - opacity);
+    // I think voxelSample.w (alpha/opacity) is already factored into
+    // voxelSample.xyz from mip filtering and doesn't need to be multiplied
+    // against voxelSample.xyz again here, but I could be wrong. And then,
+    // what about that factor of PI? In weight or not, pending define above.
 
     voxelPos += 2.0 * voxelStep;
-    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 1.0);
-    indirectLight += voxelSample.xyz * (transmitted);// * voxelSample.w);
+    float4 voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 0.0);
+    indirectLight = voxelSample.xyz * transmitted;
     opacity += voxelSample.w * transmitted;
     transmitted = saturate(1.0 - opacity);
 
     voxelPos += 4.0 * voxelStep;
-    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 2.0);
-    indirectLight += voxelSample.xyz * (transmitted);// * voxelSample.w);
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 1.0);
+    indirectLight += voxelSample.xyz * transmitted;
     opacity += voxelSample.w * transmitted;
     transmitted = saturate(1.0 - opacity);
 
     voxelPos += 8.0 * voxelStep;
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 2.0);
+    indirectLight += voxelSample.xyz * transmitted;
+    opacity += voxelSample.w * transmitted;
+    transmitted = saturate(1.0 - opacity);
+
+    voxelPos += 16.0 * voxelStep;
     voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 3.0);
-    indirectLight += voxelSample.xyz * (transmitted);// * voxelSample.w);
+    indirectLight += voxelSample.xyz * transmitted;
+    opacity += voxelSample.w * transmitted;
+    transmitted = saturate(1.0 - opacity);
+
+    voxelPos += 32.0 * voxelStep;
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 4.0);
+    indirectLight += voxelSample.xyz * transmitted;
     //opacity += voxelSample.w * transmitted;
     //transmitted = saturate(1.0 - opacity);
 
@@ -426,35 +444,40 @@ float3 main(VSOutput vsOutput) : SV_Target0
         float3 indirectLight = float3(0.0, 0.0, 0.0);
 
         // high res voxel step size
-        float3 voxelStep = normalize(vsOutput.normal) * (2.0/128.0);
+        float3 voxelStep = normalize(vsOutput.normal) * (1.0/128.0);
+        // step away from surface to avoid self lighting
+        voxelPos += voxelStep;
+
+        {
+            float3 coneDir = normalize(mul(CONE_DIR_1, tbn)) * (1.0/128.0);
+            float3 cone1 = TraceCone(voxelPos, coneDir);
+            indirectLight += cone1 * saturate(dot(normal, coneDir));
+
+            coneDir = normalize(mul(CONE_DIR_2, tbn)) * (1.0/128.0);
+            float3 cone2 = TraceCone(voxelPos, coneDir);
+            indirectLight += cone2 * saturate(dot(normal, coneDir));
+
+            coneDir = normalize(mul(CONE_DIR_3, tbn)) * (1.0/128.0);
+            float3 cone3 = TraceCone(voxelPos, coneDir);
+            indirectLight += cone3 * saturate(dot(normal, coneDir));
+
+            coneDir = normalize(mul(CONE_DIR_4, tbn)) * (1.0/128.0);
+            float3 cone4 = TraceCone(voxelPos, coneDir);
+            indirectLight += cone4 * saturate(dot(normal, coneDir));
+
+            coneDir = normalize(mul(CONE_DIR_5, tbn)) * (1.0/128.0);
+            float3 cone5 = TraceCone(voxelPos, coneDir);
+            indirectLight += cone5 * saturate(dot(normal, coneDir));
+
+            // all non-up facing cones have same weighting
+            indirectLight *= CONE_WEIGHT_SIDE;
+        }
 
         float3 cone0 = TraceCone(voxelPos, voxelStep) * CONE_WEIGHT_UP;
+
         indirectLight += cone0 * saturate(dot(normal, normalize(vsOutput.normal)));
 
-        float3 coneDir = normalize(mul(CONE_DIR_1, tbn));
-        voxelStep = coneDir * (2.0/128.0);
-        float3 cone1 = TraceCone(voxelPos, voxelStep) * CONE_WEIGHT_SIDE;
-        indirectLight += cone1 * saturate(dot(normal, coneDir));
 
-        coneDir = normalize(mul(CONE_DIR_1, tbn));
-        voxelStep = coneDir * (2.0/128.0);
-        float3 cone2 = TraceCone(voxelPos, voxelStep) * CONE_WEIGHT_SIDE;
-        indirectLight += cone2 * saturate(dot(normal, coneDir));
-
-        coneDir = normalize(mul(CONE_DIR_1, tbn));
-        voxelStep = coneDir * (2.0/128.0);
-        float3 cone3 = TraceCone(voxelPos, voxelStep) * CONE_WEIGHT_SIDE;
-        indirectLight += cone3 * saturate(dot(normal, coneDir));
-
-        coneDir = normalize(mul(CONE_DIR_1, tbn));
-        voxelStep = coneDir * (2.0/128.0);
-        float3 cone4 = TraceCone(voxelPos, voxelStep) * CONE_WEIGHT_SIDE;
-        indirectLight += cone4 * saturate(dot(normal, coneDir));
-
-        coneDir = normalize(mul(CONE_DIR_1, tbn));
-        voxelStep = coneDir * (2.0/128.0);
-        float3 cone5 = TraceCone(voxelPos, voxelStep) * CONE_WEIGHT_SIDE;
-        indirectLight += cone5 * saturate(dot(normal, coneDir));
 
         colorSum += indirectLight.xyz * diffuseAlbedo;// * saturate(dot(normal, normalize(vsOutput.normal)));
     }
