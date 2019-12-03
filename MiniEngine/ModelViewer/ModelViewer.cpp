@@ -150,15 +150,24 @@ void ModelViewer::Startup( void )
     SamplerDesc DefaultSamplerDesc;
     DefaultSamplerDesc.MaxAnisotropy = 8;
 
+    SamplerDesc VoxelSamplerDesc;
+    VoxelSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    VoxelSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+    VoxelSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+    VoxelSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+    VoxelSamplerDesc.BorderColor[0] = 0.0f;
+    VoxelSamplerDesc.BorderColor[1] = 0.0f;
+    VoxelSamplerDesc.BorderColor[2] = 0.0f;
+    VoxelSamplerDesc.BorderColor[3] = 0.0f;
+    VoxelSamplerDesc.MipLODBias = 0.0f;
+    VoxelSamplerDesc.MaxAnisotropy = 1;
+    VoxelSamplerDesc.MinLOD = 0.0f;
+    VoxelSamplerDesc.MaxLOD = 5.0f;
+
     m_RootSig.Reset(6, 3);
     m_RootSig.InitStaticSampler(0, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig.InitStaticSampler(1, SamplerShadowDesc, D3D12_SHADER_VISIBILITY_PIXEL);
-
-    // Repurpose default desc, with overrides for voxel sampler
-    DefaultSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    DefaultSamplerDesc.SetTextureAddressMode(D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
-    m_RootSig.InitStaticSampler(2, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
-
+    m_RootSig.InitStaticSampler(2, VoxelSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[0].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
     m_RootSig[1].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[2].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 6, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -642,7 +651,21 @@ void ModelViewer::RenderScene( void )
 
         {
             ScopedTimer _prof4(L"Voxelize Scene", gfxContext);
-            
+
+            // Should have a better way of clearing this on initialization.
+            static bool first = true;
+            ColorBuffer & voxelMips = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels);
+            if (first)
+            {
+                gfxContext.TransitionResource(voxelMips, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+                gfxContext.ClearUAV(voxelMips);
+                first = false;
+            }
+            gfxContext.TransitionResource(voxelMips, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
+
+
+            gfxContext.SetPipelineState(m_VoxelizePSO);
+
             // disable all framebuffer options, depth write, depth test, color writes
             // set viewport resolution equal to voxel grid dimensions
 
@@ -650,7 +673,6 @@ void ModelViewer::RenderScene( void )
             gfxContext.SetDynamicConstantBufferView(1, sizeof(psConstants), &psConstants);
             gfxContext.SetDynamicDescriptor(5, 0, VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::InitialVoxelization).GetUAV());
 
-            gfxContext.SetPipelineState(m_VoxelizePSO);
 
             ColorBuffer& voxelBuffer = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::InitialVoxelization);
 

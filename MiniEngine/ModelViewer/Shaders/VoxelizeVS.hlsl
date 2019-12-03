@@ -61,5 +61,10 @@ VSOutput main(VSInput vsInput)
     vsOutput.tangent = vsInput.tangent;
     vsOutput.bitangent = vsInput.bitangent;
 
+    // Getting garbage results out of normalizing these in the pixel shader.
+    // Force reasonableish values here.
+    vsOutput.tangent = dot(vsInput.tangent, vsInput.tangent) > 0.0 ? vsInput.tangent : float3(1.0, 0.0, 0.0);
+    vsOutput.bitangent = dot(vsInput.bitangent, vsInput.bitangent) > 0.0 ? vsInput.bitangent : float3(0.0, 1.0, 0.0);
+
     return vsOutput;
 }

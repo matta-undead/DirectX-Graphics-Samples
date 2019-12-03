@@ -26,8 +26,8 @@
         "addressW = TEXTURE_ADDRESS_CLAMP," \
         "comparisonFunc = COMPARISON_GREATER_EQUAL," \
         "filter = FILTER_MIN_MAG_LINEAR_MIP_POINT)," \
-    "StaticSampler(s2, maxAnisotropy = 8, visibility = SHADER_VISIBILITY_PIXEL," \
-        "addressU = TEXTURE_ADDRESS_CLAMP," \
-        "addressV = TEXTURE_ADDRESS_CLAMP," \
-        "addressW = TEXTURE_ADDRESS_CLAMP," \
-        "filter = FILTER_MIN_MAG_MIP_POINT)"
+    "StaticSampler(s2, maxAnisotropy = 1, visibility = SHADER_VISIBILITY_PIXEL," \
+        "addressU = TEXTURE_ADDRESS_BORDER," \
+        "addressV = TEXTURE_ADDRESS_BORDER," \
+        "addressW = TEXTURE_ADDRESS_BORDER," \
+        "filter = FILTER_MIN_MAG_MIP_LINEAR)"

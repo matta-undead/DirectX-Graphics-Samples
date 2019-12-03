@@ -42,12 +42,9 @@ void VoxelConeTracing::Initialize( void )
     s_GenerateMipsRS[1].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 4);
     s_GenerateMipsRS.Finalize(L"Voxel Generate Mips");
 
-#define CreatePSO( ObjName, ShaderByteCode ) \
-    ObjName.SetRootSignature(s_RootSignature); \
-    ObjName.SetComputeShader(ShaderByteCode, sizeof(ShaderByteCode) ); \
-    ObjName.Finalize();
-
-    CreatePSO(s_VctDownsampleConvertPSO, g_pVctDownsampleConvertVoxelBufferCS);
+    s_VctDownsampleConvertPSO.SetRootSignature(s_RootSignature);
+    s_VctDownsampleConvertPSO.SetComputeShader(g_pVctDownsampleConvertVoxelBufferCS, sizeof(g_pVctDownsampleConvertVoxelBufferCS) );
+    s_VctDownsampleConvertPSO.Finalize();
  
     s_VctDownsamplePSO.SetRootSignature(s_GenerateMipsRS);
     s_VctDownsamplePSO.SetComputeShader(g_pVctDownsampleVoxelBufferCS, sizeof(g_pVctDownsampleVoxelBufferCS));
@@ -129,47 +126,49 @@ void VoxelConeTracing::DownsampleVoxelBuffer( CommandContext& BaseContext )
 
 
     {
-        ScopedTimer _prof(L"Vct Generate Mips 1-3 of Voxel Buffer", BaseContext);
+        ScopedTimer _prof(L"Vct Generate Mips of Voxel Buffer", BaseContext);
 
         Context.SetRootSignature(s_GenerateMipsRS);
 
-        const uint32_t sourceMip = 0;
-        const uint32_t numMips = 3;
+        Context.TransitionResource(s_VoxelMips, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-        Context.SetPipelineState(s_VctDownsamplePSO);
-        Context.SetConstants(0, sourceMip, numMips);
+        {
+            const uint32_t sourceMip = 0;
+            const uint32_t numMips = 3;
 
-        D3D12_CPU_DESCRIPTOR_HANDLE mips[] = {
-            s_VoxelMips.GetUAV(sourceMip + 0),
-            s_VoxelMips.GetUAV(sourceMip + 1),
-            s_VoxelMips.GetUAV(sourceMip + 2),
-            s_VoxelMips.GetUAV(sourceMip + 3),
-        };
-        Context.SetDynamicDescriptors(1, 0, 4, mips);
-        const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels) / 2;
-        Context.Dispatch3D(dims, dims, dims, 4, 4, 4);
-    }
+            Context.SetPipelineState(s_VctDownsamplePSO);
+            Context.SetConstants(0, sourceMip, numMips);
 
-    {
-        ScopedTimer _prof(L"Vct Generate Mips 4-6 of Voxel Buffer", BaseContext);
+            D3D12_CPU_DESCRIPTOR_HANDLE mips[] = {
+                s_VoxelMips.GetUAV(sourceMip + 0),
+                s_VoxelMips.GetUAV(sourceMip + 1),
+                s_VoxelMips.GetUAV(sourceMip + 2),
+                s_VoxelMips.GetUAV(sourceMip + 3),
+            };
+            Context.SetDynamicDescriptors(1, 0, 4, mips);
+            const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels) / 2;
+            Context.Dispatch3D(dims, dims, dims, 4, 4, 4);
+        }
 
-        Context.SetRootSignature(s_GenerateMipsRS);
+        {
+            const uint32_t sourceMip = 3;
+            const uint32_t numMips = 2;
 
-        const uint32_t sourceMip = 3;
-        const uint32_t numMips = 2;
+            Context.SetPipelineState(s_VctDownsamplePSO);
+            Context.SetConstants(0, sourceMip, numMips);
 
-        Context.SetPipelineState(s_VctDownsamplePSO);
-        Context.SetConstants(0, sourceMip, numMips);
+            D3D12_CPU_DESCRIPTOR_HANDLE mips[] = {
+                s_VoxelMips.GetUAV(sourceMip + 0),
+                s_VoxelMips.GetUAV(sourceMip + 1),
+                s_VoxelMips.GetUAV(sourceMip + 2),
+                s_VoxelMips.GetUAV(sourceMip + 3),
+            };
+            Context.SetDynamicDescriptors(1, 0, 4, mips);
+            const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels) / 16;
+            Context.Dispatch3D(dims, dims, dims, 4, 4, 4);
+        }
 
-        D3D12_CPU_DESCRIPTOR_HANDLE mips[] = {
-            s_VoxelMips.GetUAV(sourceMip + 0),
-            s_VoxelMips.GetUAV(sourceMip + 1),
-            s_VoxelMips.GetUAV(sourceMip + 2),
-            s_VoxelMips.GetUAV(sourceMip + 3),
-        };
-        Context.SetDynamicDescriptors(1, 0, 4, mips);
-        const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels) / 16;
-        Context.Dispatch3D(dims, dims, dims, 4, 4, 4);
+        Context.TransitionResource(s_VoxelMips, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     }
 }
 

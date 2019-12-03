@@ -13,7 +13,7 @@
 // these are looking wrong right now
 #define APPLY_NON_DIRECTIONAL_LIGHTS            0
 // sample previous frame's indirect light
-#define VCT_APPLY_INDIRECT_LIGHT                1
+#define VCT_APPLY_INDIRECT_LIGHT                0
 #define VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI    0
 
 #define CONE_DIR_0      float3(0.0, 1.0, 0.0)
@@ -422,32 +422,39 @@ float3 TraceCone(float3 voxelPos, float3 voxelStep)
     // against voxelSample.xyz again here, but I could be wrong. And then,
     // what about that factor of PI? In weight or not, pending define above.
 
+    // Cones have 60 degree opening. Tan(60/2) ~= 0.577350,
+    // 2x that ~= 1.154701, this is the scale from cone
+    // length to diameter, which should guide mip selection.
+    // want log2(dist * 1.154701) -> mip. but dist would
+    // need to be in relevant units. 
+    float distanceScalar = length(voxelStep) * (128.0 * 1.154701);
+
     voxelPos += 2.0 * voxelStep;
-    float4 voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 0.0);
+    float4 voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*2.0) );
     indirectLight = voxelSample.xyz * transmitted;
     opacity += voxelSample.w * transmitted;
     transmitted = saturate(1.0 - opacity);
 
     voxelPos += 4.0 * voxelStep;
-    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 1.0);
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*4.0) );
     indirectLight += voxelSample.xyz * transmitted;
     opacity += voxelSample.w * transmitted;
     transmitted = saturate(1.0 - opacity);
 
     voxelPos += 8.0 * voxelStep;
-    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 2.0);
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*8.0) );
     indirectLight += voxelSample.xyz * transmitted;
     opacity += voxelSample.w * transmitted;
     transmitted = saturate(1.0 - opacity);
 
     voxelPos += 16.0 * voxelStep;
-    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 3.0);
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*16.0) );
     indirectLight += voxelSample.xyz * transmitted;
     opacity += voxelSample.w * transmitted;
     transmitted = saturate(1.0 - opacity);
 
     voxelPos += 32.0 * voxelStep;
-    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 4.0);
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*32.0) );
     indirectLight += voxelSample.xyz * transmitted;
     //opacity += voxelSample.w * transmitted;
     //transmitted = saturate(1.0 - opacity);
