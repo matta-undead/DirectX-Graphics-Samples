@@ -6,7 +6,8 @@
 #define VCT_APPLY_AMBIENT_LIGHT                 0
 #define VCT_APPLY_ADDITIONAL_LIGHTS             0
 #define VCT_APPLY_INDIRECT_LIGHT                1
-#define VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI    1
+#define VCT_APPLY_SSAO_TO_INDIRECT              1
+#define VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI    0
 
 #define CONE_DIR_0      float3(0.0, 1.0, 0.0)
 #define CONE_DIR_1      float3(0.0, 0.5, 0.866025)
@@ -16,8 +17,8 @@
 #define CONE_DIR_5      float3(-0.823639, 0.5, 0.267617)
 
 #if VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI
-    #define CONE_WEIGHT_UP      (5.0*3.14159/20.0)
-    #define CONE_WEIGHT_SIDE    (3.0*3.14159/20.0)
+    #define CONE_WEIGHT_UP      (5.0/(20.0*3.14159))
+    #define CONE_WEIGHT_SIDE    (3.0/(20.0*3.14159))
 #else
     #define CONE_WEIGHT_UP      (5.0/20.0)
     #define CONE_WEIGHT_SIDE    (3.0/20.0)
@@ -477,9 +478,13 @@ float3 main(VSOutput vsOutput) : SV_Target0
 
         indirectLight += cone0 * saturate(dot(normal, normalize(vsOutput.normal)));
 
+#if VCT_APPLY_SSAO_TO_INDIRECT
+        float ao = texSSAO[pixelPos];
+#else
+        float ao = 1.0;
+#endif // VCT_APPLY_SSAO_TO_INDIRECT
 
-
-        colorSum += indirectLight.xyz * diffuseAlbedo;// * saturate(dot(normal, normalize(vsOutput.normal)));
+        colorSum += ao * indirectLight.xyz * diffuseAlbedo;
     }
 #endif // VCT_APPLY_INDIRECT_LIGHT
 

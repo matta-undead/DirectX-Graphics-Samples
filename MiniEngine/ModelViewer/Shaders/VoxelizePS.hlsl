@@ -8,10 +8,29 @@
 #pragma warning (disable: 3557)
 
 // toggle light types on and off
-#define APPLY_AMBIENT_LIGHT             0
-#define APPLY_DIRECTIONAL_LIGHT         1
+#define APPLY_AMBIENT_LIGHT                     0
+#define APPLY_DIRECTIONAL_LIGHT                 1
 // these are looking wrong right now
-#define APPLY_NON_DIRECTIONAL_LIGHTS    0
+#define APPLY_NON_DIRECTIONAL_LIGHTS            0
+// sample previous frame's indirect light
+#define VCT_APPLY_INDIRECT_LIGHT                1
+#define VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI    0
+
+#define CONE_DIR_0      float3(0.0, 1.0, 0.0)
+#define CONE_DIR_1      float3(0.0, 0.5, 0.866025)
+#define CONE_DIR_2      float3(0.823639, 0.5, 0.267617)
+#define CONE_DIR_3      float3(0.509037, 0.5, -0.700629)
+#define CONE_DIR_4      float3(-0.509037, 0.5, -0.700629)
+#define CONE_DIR_5      float3(-0.823639, 0.5, 0.267617)
+
+#if VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI
+    #define CONE_WEIGHT_UP      (5.0/(20.0*3.14159))
+    #define CONE_WEIGHT_SIDE    (3.0/(20.0*3.14159))
+#else
+    #define CONE_WEIGHT_UP      (5.0/20.0)
+    #define CONE_WEIGHT_SIDE    (3.0/20.0)
+#endif
+
 
 struct VSOutput
 {
@@ -52,6 +71,10 @@ Texture2DArray<float> lightShadowArrayTex : register(t67);
 ByteAddressBuffer lightGrid : register(t68);
 ByteAddressBuffer lightGridBitMask : register(t69);
 
+// Source voxel data from previous frame
+Texture3D<float4> texVoxel : register(t70);
+
+// Destination voxel data for this frame
 RWTexture3D<uint> voxelBuffer : register(u1);
 
 // interlocked average garbage
@@ -117,6 +140,7 @@ cbuffer PSConstants : register(b0)
 
 SamplerState sampler0 : register(s0);
 SamplerComparisonState shadowSampler : register(s1);
+SamplerState sampler2 : register(s2);
 
 void AntiAliasSpecular( inout float3 texNormal, inout float gloss )
 {
@@ -386,6 +410,52 @@ uint PullNextBit( inout uint bits )
     return bitIndex;
 }
 
+
+float3 TraceCone(float3 voxelPos, float3 voxelStep)
+{
+    float opacity = 0.0;
+    float transmitted = 1.0;
+    float3 indirectLight = float3(0.0, 0.0, 0.0);
+
+    // I think voxelSample.w (alpha/opacity) is already factored into
+    // voxelSample.xyz from mip filtering and doesn't need to be multiplied
+    // against voxelSample.xyz again here, but I could be wrong. And then,
+    // what about that factor of PI? In weight or not, pending define above.
+
+    voxelPos += 2.0 * voxelStep;
+    float4 voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 0.0);
+    indirectLight = voxelSample.xyz * transmitted;
+    opacity += voxelSample.w * transmitted;
+    transmitted = saturate(1.0 - opacity);
+
+    voxelPos += 4.0 * voxelStep;
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 1.0);
+    indirectLight += voxelSample.xyz * transmitted;
+    opacity += voxelSample.w * transmitted;
+    transmitted = saturate(1.0 - opacity);
+
+    voxelPos += 8.0 * voxelStep;
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 2.0);
+    indirectLight += voxelSample.xyz * transmitted;
+    opacity += voxelSample.w * transmitted;
+    transmitted = saturate(1.0 - opacity);
+
+    voxelPos += 16.0 * voxelStep;
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 3.0);
+    indirectLight += voxelSample.xyz * transmitted;
+    opacity += voxelSample.w * transmitted;
+    transmitted = saturate(1.0 - opacity);
+
+    voxelPos += 32.0 * voxelStep;
+    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, 4.0);
+    indirectLight += voxelSample.xyz * transmitted;
+    //opacity += voxelSample.w * transmitted;
+    //transmitted = saturate(1.0 - opacity);
+
+    return indirectLight;
+}
+
+
 [RootSignature(ModelViewer_RootSig)]
 //float3 main(VSOutput vsOutput) : SV_Target0
 void main(GSOutput vsOutput)
@@ -404,15 +474,14 @@ void main(GSOutput vsOutput)
     }
 #endif
 
-#if APPLY_DIRECTIONAL_LIGHT
     float gloss = 128.0;
     float3 normal;
-    {
+    //{
         normal = texNormal.Sample(sampler0, vsOutput.uv) * 2.0 - 1.0;
         AntiAliasSpecular(normal, gloss);
         float3x3 tbn = float3x3(normalize(vsOutput.tangent), normalize(vsOutput.bitangent), normalize(vsOutput.normal));
         normal = normalize(mul(normal, tbn));
-    }
+    //}
 
 #if 1
     float3 specularAlbedo = float3( 0.56, 0.56, 0.56 );
@@ -422,8 +491,64 @@ void main(GSOutput vsOutput)
     float specularMask = 0.0;
 #endif
     float3 viewDir = normalize(vsOutput.viewDir);
+#if APPLY_DIRECTIONAL_LIGHT
     colorSum += ApplyDirectionalLight( diffuseAlbedo, specularAlbedo, specularMask, gloss, normal, viewDir, SunDirection, SunColor, vsOutput.shadowCoord );
-#endif
+#endif // APPLY_DIRECTIONAL_LIGHT
+
+
+#if VCT_APPLY_INDIRECT_LIGHT
+    {
+        // this is terrible, but i'm having trouble getting started.
+        // so anything to make progress forward.
+        float3 worldMin = float3(-1920.94592, -126.442497, -1182.80713);
+        float3 worldMax = float3(1799.90808, 1429.43323, 1105.42603);
+
+        float3 worldPos = vsOutput.worldPos.xyz;
+        float3 voxelPos = (worldPos - worldMin) / (worldMax - worldMin);
+
+        float3 indirectLight = float3(0.0, 0.0, 0.0);
+
+        // high res voxel step size
+        float3 voxelStep = normalize(vsOutput.normal) * (1.0/128.0);
+        // step away from surface to avoid self lighting
+        voxelPos += voxelStep;
+
+        {
+            float3 coneDir = normalize(mul(CONE_DIR_1, tbn)) * (1.0/128.0);
+            float3 cone1 = TraceCone(voxelPos, coneDir);
+            indirectLight += cone1 * saturate(dot(normal, coneDir));
+
+            coneDir = normalize(mul(CONE_DIR_2, tbn)) * (1.0/128.0);
+            float3 cone2 = TraceCone(voxelPos, coneDir);
+            indirectLight += cone2 * saturate(dot(normal, coneDir));
+
+            coneDir = normalize(mul(CONE_DIR_3, tbn)) * (1.0/128.0);
+            float3 cone3 = TraceCone(voxelPos, coneDir);
+            indirectLight += cone3 * saturate(dot(normal, coneDir));
+
+            coneDir = normalize(mul(CONE_DIR_4, tbn)) * (1.0/128.0);
+            float3 cone4 = TraceCone(voxelPos, coneDir);
+            indirectLight += cone4 * saturate(dot(normal, coneDir));
+
+            coneDir = normalize(mul(CONE_DIR_5, tbn)) * (1.0/128.0);
+            float3 cone5 = TraceCone(voxelPos, coneDir);
+            indirectLight += cone5 * saturate(dot(normal, coneDir));
+
+            // all non-up facing cones have same weighting
+            indirectLight *= CONE_WEIGHT_SIDE;
+        }
+
+        float3 cone0 = TraceCone(voxelPos, voxelStep) * CONE_WEIGHT_UP;
+
+        indirectLight += cone0 * saturate(dot(normal, normalize(vsOutput.normal)));
+
+        float amt = dot(indirectLight, float3(0.33, 0.34, 0.33));
+        indirectLight = float3(amt, 0.0, amt);
+
+        colorSum += indirectLight.xyz;// * diffuseAlbedo;
+    }
+#endif // VCT_APPLY_INDIRECT_LIGHT
+
 
 #if APPLY_NON_DIRECTIONAL_LIGHTS
     uint2 tilePos = GetTilePos(pixelPos, InvTileDim.xy);
