@@ -7,6 +7,7 @@
 #define VCT_APPLY_ADDITIONAL_LIGHTS             0
 #define VCT_APPLY_INDIRECT_LIGHT                1
 #define VCT_APPLY_SSAO_TO_INDIRECT              1
+#define VCT_APPLY_INDIRECT_LIGHT_SPECULAR       0
 #define VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI    0
 
 #define CONE_DIR_0      float3(0.0, 1.0, 0.0)
@@ -357,7 +358,7 @@ uint PullNextBit( inout uint bits )
     return bitIndex;
 }
 
-float3 TraceCone(float3 voxelPos, float3 voxelStep)
+float3 TraceCone(float3 voxelPos, float3 voxelStep, float normalizedConeDiameter)
 {
     float opacity = 0.0;
     float transmitted = 1.0;
@@ -368,12 +369,14 @@ float3 TraceCone(float3 voxelPos, float3 voxelStep)
     // against voxelSample.xyz again here, but I could be wrong. And then,
     // what about that factor of PI? In weight or not, pending define above.
 
-    // Cones have 60 degree opening. Tan(60/2) ~= 0.577350,
-    // 2x that ~= 1.154701, this is the scale from cone
-    // length to diameter, which should guide mip selection.
-    // want log2(dist * 1.154701) -> mip. but dist would
-    // need to be in relevant units. 
-    float distanceScalar = length(voxelStep) * (128.0 * 1.154701);
+    // Handle cone diameter. For example, in the diffuse case,
+    // hemisphere is modelled by six cones with a 60 degree
+    // opening. Tan(60/2) ~= 0.577350, 2x that ~= 1.154701,
+    // this is the scale from cone length to diameter, which
+    // should guide mip selection.
+    // want log2(dist * 1.154701) -> mip.
+    // dist would need to be in relevant units, scale by voxel size.
+    float distanceScalar = length(voxelStep) * (128.0 * normalizedConeDiameter);//1.154701);
 
     voxelPos += 2.0 * voxelStep;
     float4 voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*2.0) );
@@ -408,6 +411,27 @@ float3 TraceCone(float3 voxelPos, float3 voxelStep)
     return indirectLight;
 }
 
+float3 TraceConeSpec(float3 voxelPos, float3 voxelStep, float normalizedConeDiameter)
+{
+    float opacity = 0.0;
+    float transmitted = 1.0;
+    float3 indirectLight = float3(0.0, 0.0, 0.0);
+
+    float distanceScalar = length(voxelStep) * (128.0 * normalizedConeDiameter);//1.154701);
+
+    float3 initialVoxelPos = voxelPos;
+
+    for (float i = 0.0; i < 10.0; i += 1.0)
+    {
+        voxelPos += 2.0 * voxelStep;
+        float4 voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(length(voxelPos - initialVoxelPos) * distanceScalar));
+        indirectLight += voxelSample.xyz * transmitted;
+        opacity += voxelSample.w * transmitted;
+        transmitted = saturate(1.0 - opacity);
+    }
+
+    return indirectLight;
+}
 
 
 [RootSignature(ModelViewer_RootSig)]
@@ -439,7 +463,6 @@ float3 main(VSOutput vsOutput) : SV_Target0
     colorSum += ApplyDirectionalLight( diffuseAlbedo, specularAlbedo, specularMask, gloss, normal, viewDir, SunDirection, SunColor, vsOutput.shadowCoord );
 #endif // VCT_APPLY_DIRECTIONAL_LIGHT
 
-#if VCT_APPLY_INDIRECT_LIGHT
     {
         // this is terrible, but i'm having trouble getting started.
         // so anything to make progress forward.
@@ -449,51 +472,57 @@ float3 main(VSOutput vsOutput) : SV_Target0
         float3 worldPos = vsOutput.worldPos.xyz;
         float3 voxelPos = (worldPos - worldMin) / (worldMax - worldMin);
 
-        float3 indirectLight = float3(0.0, 0.0, 0.0);
-
         // high res voxel step size
         float3 voxelStep = normalize(vsOutput.normal) * (1.0/128.0);
         // step away from surface to avoid self lighting
         voxelPos += voxelStep;
 
+#if VCT_APPLY_INDIRECT_LIGHT
+        // 1.154701 is diameter of base of 60 degree cone with height 1.0
+        // take tan of half angle, double it. tan(60/2) ~= 0.577350.
         {
+            float3 indirectLight = float3(0.0, 0.0, 0.0);
+
             float3 coneDir = normalize(mul(CONE_DIR_1, tbn)) * (1.0/128.0);
-            float3 cone1 = TraceCone(voxelPos, coneDir);
-            indirectLight += cone1 * saturate(dot(normal, coneDir));
+            indirectLight += TraceCone(voxelPos, coneDir, 1.154701);
 
             coneDir = normalize(mul(CONE_DIR_2, tbn)) * (1.0/128.0);
-            float3 cone2 = TraceCone(voxelPos, coneDir);
-            indirectLight += cone2 * saturate(dot(normal, coneDir));
+            indirectLight += TraceCone(voxelPos, coneDir, 1.154701);
 
             coneDir = normalize(mul(CONE_DIR_3, tbn)) * (1.0/128.0);
-            float3 cone3 = TraceCone(voxelPos, coneDir);
-            indirectLight += cone3 * saturate(dot(normal, coneDir));
+            indirectLight += TraceCone(voxelPos, coneDir, 1.154701);
 
             coneDir = normalize(mul(CONE_DIR_4, tbn)) * (1.0/128.0);
-            float3 cone4 = TraceCone(voxelPos, coneDir);
-            indirectLight += cone4 * saturate(dot(normal, coneDir));
+            indirectLight += TraceCone(voxelPos, coneDir, 1.154701);
 
             coneDir = normalize(mul(CONE_DIR_5, tbn)) * (1.0/128.0);
-            float3 cone5 = TraceCone(voxelPos, coneDir);
-            indirectLight += cone5 * saturate(dot(normal, coneDir));
+            indirectLight += TraceCone(voxelPos, coneDir, 1.154701);
 
             // all non-up facing cones have same weighting
             indirectLight *= CONE_WEIGHT_SIDE;
-        }
 
-        float3 cone0 = TraceCone(voxelPos, voxelStep) * CONE_WEIGHT_UP;
-
-        indirectLight += cone0 * saturate(dot(normal, normalize(vsOutput.normal)));
+            indirectLight += TraceCone(voxelPos, voxelStep, 1.154701) * CONE_WEIGHT_UP;
 
 #if VCT_APPLY_SSAO_TO_INDIRECT
-        float ao = texSSAO[pixelPos];
-#else
-        float ao = 1.0;
+            float ao = texSSAO[pixelPos];
+            indirectLight *= ao;
 #endif // VCT_APPLY_SSAO_TO_INDIRECT
 
-        colorSum += ao * indirectLight.xyz * diffuseAlbedo;
-    }
+            colorSum += indirectLight * diffuseAlbedo;
+        }
 #endif // VCT_APPLY_INDIRECT_LIGHT
+
+#if VCT_APPLY_INDIRECT_LIGHT_SPECULAR
+        {
+            float3 specConeDir = (normal*2.0 + normalize(viewDir)) * (1.0/128.0);
+            float coneHalfAngle = 0.02;//1.0472*0.5; // 10 degree cone? idk... looks like gloss/roughness fixed here.
+            float tanCha = tan(coneHalfAngle);
+            float3 coneSpec = TraceConeSpec(voxelPos, specConeDir, 2.0*tanCha);
+
+            colorSum += coneSpec * specularAlbedo * specularMask;
+        }
+#endif // VCT_APPLY_INDIRECT_LIGHT_SPECULAR
+    }
 
 
 #if VCT_APPLY_ADDITIONAL_LIGHTS
