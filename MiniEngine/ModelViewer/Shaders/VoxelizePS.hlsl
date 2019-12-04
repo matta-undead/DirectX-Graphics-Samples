@@ -16,6 +16,8 @@
 #define VCT_APPLY_INDIRECT_LIGHT                0
 #define VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI    0
 
+#define VCT_USE_ANISOTROPIC_VOXELS              0
+
 #define CONE_DIR_0      float3(0.0, 1.0, 0.0)
 #define CONE_DIR_1      float3(0.0, 0.5, 0.866025)
 #define CONE_DIR_2      float3(0.823639, 0.5, 0.267617)
@@ -465,6 +467,30 @@ float3 TraceCone(float3 voxelPos, float3 voxelStep, float normalizedConeDiameter
 }
 
 
+void WriteVoxelValue (uint3 voxelPos, float4 color, float3 geometryNormal)
+{
+#if VCT_USE_ANISOTROPIC_VOXELS
+
+    // Store unique value per +/-x, +/-y, +/-z
+    uint3 voxelPosBase = voxelPos;
+    voxelPosBase.x *= 6;
+
+    float xWeight = geometryNormal.x;
+    float yWeight = geometryNormal.y;
+    float zWeight = geometryNormal.z;
+
+    ImageAtomicAverage(voxelPosBase + uint3(0, 0, 0), float4(color.xyz * saturate( xWeight), 1.0) );
+    ImageAtomicAverage(voxelPosBase + uint3(1, 0, 0), float4(color.xyz * saturate(-xWeight), 1.0) );
+    ImageAtomicAverage(voxelPosBase + uint3(2, 0, 0), float4(color.xyz * saturate( yWeight), 1.0) );
+    ImageAtomicAverage(voxelPosBase + uint3(3, 0, 0), float4(color.xyz * saturate(-yWeight), 1.0) );
+    ImageAtomicAverage(voxelPosBase + uint3(4, 0, 0), float4(color.xyz * saturate( zWeight), 1.0) );
+    ImageAtomicAverage(voxelPosBase + uint3(5, 0, 0), float4(color.xyz * saturate(-zWeight), 1.0) );
+
+#else
+    ImageAtomicAverage(voxelPos, color);
+#endif
+}
+
 [RootSignature(ModelViewer_RootSig)]
 //float3 main(VSOutput vsOutput) : SV_Target0
 void main(GSOutput vsOutput)
@@ -890,23 +916,13 @@ void main(GSOutput vsOutput)
     voxelPos = uint3(normalizedWorld);
 #endif
 
-
-#if 1
     float4 newVal = float4(diffuseAlbedo, 1.0);
-
-    // display projected axis
-    //newVal.xyz = 0.5*(newVal.xyz+debugColor);
 #if APPLY_AMBIENT_LIGHT || APPLY_DIRECTIONAL_LIGHT || APPLY_NON_DIRECTIONAL_LIGHTS
     newVal.xyz = colorSum / (1.0+colorSum);
 #endif
 
-    ImageAtomicAverage(voxelPos, newVal);
-#else
-    float4 newVal = float4(diffuseAlbedo, 1.0);
-    uint nuValU = PackUintFromFloat4(newVal);
-    uint oldVal;
-    InterlockedMax(voxelBuffer[voxelPos], nuValU);
-#endif
+    //ImageAtomicAverage(voxelPos, newVal);
+    WriteVoxelValue(voxelPos, newVal, vsOutput.normal);
 
     return;// colorSum;
 }

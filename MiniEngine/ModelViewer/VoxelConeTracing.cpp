@@ -13,6 +13,8 @@
 
 using namespace Graphics;
 
+#define VCT_USE_ANISOTROPIC_VOXELS  0
+
 namespace VoxelConeTracing
 {
     RootSignature s_RootSignature;
@@ -20,12 +22,16 @@ namespace VoxelConeTracing
     ComputePSO s_VctDownsampleConvertPSO;
 
     ColorBuffer s_VoxelBuffer;
-    ColorBuffer s_VoxelMips;
+
+#if VCT_USE_ANISOTROPIC_VOXELS
+    const uint32_t kVoxelMipsCount = 6;
+#else
+    const uint32_t kVoxelMipsCount = 1;
+#endif
+    ColorBuffer s_VoxelMips[kVoxelMipsCount];
 
     RootSignature s_GenerateMipsRS;
     ComputePSO s_VctDownsamplePSO;
-
-
 }
 
 void VoxelConeTracing::Initialize( void )
@@ -34,7 +40,7 @@ void VoxelConeTracing::Initialize( void )
     s_RootSignature.InitStaticSampler(0, SamplerPointBorderDesc);
     s_RootSignature.InitStaticSampler(1, SamplerLinearClampDesc);
     s_RootSignature[0].InitAsConstantBuffer(0);
-    s_RootSignature[1].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 2);
+    s_RootSignature[1].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, kVoxelMipsCount+1);
     s_RootSignature.Finalize(L"Voxel Cone Tracing");
 
     s_GenerateMipsRS.Reset(2, 0);
@@ -52,16 +58,23 @@ void VoxelConeTracing::Initialize( void )
 
     // format as uint32_t to allow interlocked atomics in shader
     const uint32_t initialDims = GetVoxelBufferDims(BufferType::InitialVoxelization);
-    s_VoxelBuffer.Create3D( L"Voxel Buffer", initialDims, initialDims, initialDims, 1, DXGI_FORMAT_R32_UINT );
+    s_VoxelBuffer.Create3D( L"Voxel Buffer", kVoxelMipsCount*initialDims, initialDims, initialDims, 1, DXGI_FORMAT_R32_UINT );
 
     const uint32_t filteredDims = GetVoxelBufferDims(BufferType::FilteredVoxels);
-    s_VoxelMips.Create3D( L"Voxel Mips", filteredDims, filteredDims, filteredDims, 0, DXGI_FORMAT_R8G8B8A8_UNORM );
+    for (uint32_t i = 0; i < kVoxelMipsCount; ++i)
+    {
+        s_VoxelMips[i].Create3D( L"Voxel Mips", filteredDims, filteredDims, filteredDims, 0, DXGI_FORMAT_R8G8B8A8_UNORM );
+    }
 }
 
 void VoxelConeTracing::Shutdown( void )
 {
     s_VoxelBuffer.Destroy();
-    s_VoxelMips.Destroy();
+
+    for (uint32_t i = 0; i < kVoxelMipsCount; ++i)
+    {
+        s_VoxelMips[i].Destroy();
+    }
 }
 
 ColorBuffer& VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType type)
@@ -72,7 +85,7 @@ ColorBuffer& VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType type)
         return s_VoxelBuffer;
 
     case VoxelConeTracing::BufferType::FilteredVoxels:
-        return s_VoxelMips;
+        return s_VoxelMips[0];
 
     default:
         ASSERT(false, "Invalid voxel buffer type or cases need updating.");
@@ -115,11 +128,17 @@ void VoxelConeTracing::DownsampleVoxelBuffer( CommandContext& BaseContext )
         Context.SetPipelineState(s_VctDownsampleConvertPSO);
         D3D12_CPU_DESCRIPTOR_HANDLE buffers[] = {
             s_VoxelBuffer.GetUAV(),
-            s_VoxelMips.GetUAV()
+            s_VoxelMips[0].GetUAV()
+#if VCT_USE_ANISOTROPIC_VOXELS
+            , s_VoxelMips[1].GetUAV(),
+            s_VoxelMips[2].GetUAV(),
+            s_VoxelMips[3].GetUAV(),
+            s_VoxelMips[4].GetUAV(),
+            s_VoxelMips[5].GetUAV()
+#endif
         };
-        //Context.SetDynamicDescriptor(1, 0, s_VoxelBuffer.GetUAV());
-        //Context.SetDynamicDescriptor(1, 1, s_VoxelMips.GetUAV());
-        Context.SetDynamicDescriptors(1, 0, 2, buffers);
+        Context.SetDynamicDescriptors(1, 0, kVoxelMipsCount + 1, buffers);
+
         const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels);
         Context.Dispatch3D(dims, dims, dims, 4, 4, 4);
     }
@@ -130,45 +149,48 @@ void VoxelConeTracing::DownsampleVoxelBuffer( CommandContext& BaseContext )
 
         Context.SetRootSignature(s_GenerateMipsRS);
 
-        Context.TransitionResource(s_VoxelMips, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
+        for (uint32_t i = 0; i < kVoxelMipsCount; ++i)
         {
-            const uint32_t sourceMip = 0;
-            const uint32_t numMips = 3;
+            Context.TransitionResource(s_VoxelMips[i], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-            Context.SetPipelineState(s_VctDownsamplePSO);
-            Context.SetConstants(0, sourceMip, numMips);
+            {
+                const uint32_t sourceMip = 0;
+                const uint32_t numMips = 3;
 
-            D3D12_CPU_DESCRIPTOR_HANDLE mips[] = {
-                s_VoxelMips.GetUAV(sourceMip + 0),
-                s_VoxelMips.GetUAV(sourceMip + 1),
-                s_VoxelMips.GetUAV(sourceMip + 2),
-                s_VoxelMips.GetUAV(sourceMip + 3),
-            };
-            Context.SetDynamicDescriptors(1, 0, 4, mips);
-            const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels) / 2;
-            Context.Dispatch3D(dims, dims, dims, 4, 4, 4);
+                Context.SetPipelineState(s_VctDownsamplePSO);
+                Context.SetConstants(0, sourceMip, numMips);
+
+                D3D12_CPU_DESCRIPTOR_HANDLE mips[] = {
+                    s_VoxelMips[i].GetUAV(sourceMip + 0),
+                    s_VoxelMips[i].GetUAV(sourceMip + 1),
+                    s_VoxelMips[i].GetUAV(sourceMip + 2),
+                    s_VoxelMips[i].GetUAV(sourceMip + 3),
+                };
+                Context.SetDynamicDescriptors(1, 0, 4, mips);
+                const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels) / 2;
+                Context.Dispatch3D(dims, dims, dims, 4, 4, 4);
+            }
+
+            {
+                const uint32_t sourceMip = 3;
+                const uint32_t numMips = 2;
+
+                Context.SetPipelineState(s_VctDownsamplePSO);
+                Context.SetConstants(0, sourceMip, numMips);
+
+                D3D12_CPU_DESCRIPTOR_HANDLE mips[] = {
+                    s_VoxelMips[i].GetUAV(sourceMip + 0),
+                    s_VoxelMips[i].GetUAV(sourceMip + 1),
+                    s_VoxelMips[i].GetUAV(sourceMip + 2),
+                    s_VoxelMips[i].GetUAV(sourceMip + 3),
+                };
+                Context.SetDynamicDescriptors(1, 0, 4, mips);
+                const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels) / 16;
+                Context.Dispatch3D(dims, dims, dims, 4, 4, 4);
+            }
+
+            Context.TransitionResource(s_VoxelMips[i], D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         }
-
-        {
-            const uint32_t sourceMip = 3;
-            const uint32_t numMips = 2;
-
-            Context.SetPipelineState(s_VctDownsamplePSO);
-            Context.SetConstants(0, sourceMip, numMips);
-
-            D3D12_CPU_DESCRIPTOR_HANDLE mips[] = {
-                s_VoxelMips.GetUAV(sourceMip + 0),
-                s_VoxelMips.GetUAV(sourceMip + 1),
-                s_VoxelMips.GetUAV(sourceMip + 2),
-                s_VoxelMips.GetUAV(sourceMip + 3),
-            };
-            Context.SetDynamicDescriptors(1, 0, 4, mips);
-            const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels) / 16;
-            Context.Dispatch3D(dims, dims, dims, 4, 4, 4);
-        }
-
-        Context.TransitionResource(s_VoxelMips, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     }
 }
 
