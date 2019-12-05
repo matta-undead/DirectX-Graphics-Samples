@@ -16,7 +16,7 @@
     "CBV(b0, visibility = SHADER_VISIBILITY_VERTEX), " \
     "CBV(b0, visibility = SHADER_VISIBILITY_PIXEL), " \
     "DescriptorTable(SRV(t0, numDescriptors = 6), visibility = SHADER_VISIBILITY_PIXEL)," \
-    "DescriptorTable(SRV(t64, numDescriptors = 7), visibility = SHADER_VISIBILITY_PIXEL)," \
+    "DescriptorTable(SRV(t64, numDescriptors = 12), visibility = SHADER_VISIBILITY_PIXEL)," \
     "DescriptorTable(UAV(u1, numDescriptors = 1), visibility = SHADER_VISIBILITY_PIXEL)," \
     "RootConstants(b1, num32BitConstants = 2, visibility = SHADER_VISIBILITY_VERTEX), " \
     "StaticSampler(s0, maxAnisotropy = 8, visibility = SHADER_VISIBILITY_PIXEL)," \

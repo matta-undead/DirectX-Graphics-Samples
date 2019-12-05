@@ -1,9 +1,9 @@
 
+#include "VctCommon.hlsli"
+
 #define WORK_GROUP_SIZE_X   4
 #define WORK_GROUP_SIZE_Y   4
 #define WORK_GROUP_SIZE_Z   4
-
-#define VCT_USE_ANISOTROPIC_VOXELS      0
 
 RWTexture3D<uint> voxelBuffer : register(u0);
 RWTexture3D<float4> outBuffer0 : register(u1);
@@ -90,7 +90,6 @@ void main(
     uint kOffset = 1;
     uint3 offsetSourceIdx = sourceIdx;
     offsetSourceIdx.x += kOffset;
-    sourceIdx.x += 1;
     val = voxelBuffer[offsetSourceIdx];
     color = UnpackValConvertAlpha(val);
     val = voxelBuffer[offsetSourceIdx + uint3(kWidthScale, 0, 0)];
@@ -115,7 +114,6 @@ void main(
     kOffset = 2;
     offsetSourceIdx = sourceIdx;
     offsetSourceIdx.x += kOffset;
-    sourceIdx.x += 1;
     val = voxelBuffer[offsetSourceIdx];
     color = UnpackValConvertAlpha(val);
     val = voxelBuffer[offsetSourceIdx + uint3(kWidthScale, 0, 0)];
@@ -140,7 +138,6 @@ void main(
     kOffset = 2;
     offsetSourceIdx = sourceIdx;
     offsetSourceIdx.x += kOffset;
-    sourceIdx.x += 1;
     val = voxelBuffer[offsetSourceIdx];
     color = UnpackValConvertAlpha(val);
     val = voxelBuffer[offsetSourceIdx + uint3(kWidthScale, 0, 0)];
@@ -165,7 +162,6 @@ void main(
     kOffset = 4;
     offsetSourceIdx = sourceIdx;
     offsetSourceIdx.x += kOffset;
-    sourceIdx.x += 1;
     val = voxelBuffer[offsetSourceIdx];
     color = UnpackValConvertAlpha(val);
     val = voxelBuffer[offsetSourceIdx + uint3(kWidthScale, 0, 0)];
@@ -190,7 +186,6 @@ void main(
     kOffset = 5;
     offsetSourceIdx = sourceIdx;
     offsetSourceIdx.x += kOffset;
-    sourceIdx.x += 1;
     val = voxelBuffer[offsetSourceIdx];
     color = UnpackValConvertAlpha(val);
     val = voxelBuffer[offsetSourceIdx + uint3(kWidthScale, 0, 0)];

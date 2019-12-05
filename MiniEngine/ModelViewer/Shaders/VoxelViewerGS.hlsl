@@ -1,3 +1,4 @@
+#include "VctCommon.hlsli"
 
 cbuffer VSConstants : register(b0)
 {
@@ -13,6 +14,10 @@ struct VSOutput
     float3 worldPos : WorldPos;
     float4 color : TexCoord0;
     float3 viewDir : TexCoord1;
+#if VCT_USE_ANISOTROPIC_VOXELS
+    float4 colorY : TexCoord2;
+    float4 colorZ : TexCoord3;
+#endif
 };
 
 struct GSOutput
@@ -99,6 +104,10 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
 
     triStream.RestartStrip();
 
+#if VCT_USE_ANISOTROPIC_VOXELS
+    v.color = vsOutput[0].colorY;
+#endif
+
     if (view.y > 0.0)
     {
         // viewer located in postive y half space
@@ -125,6 +134,10 @@ void main(point VSOutput vsOutput[1], inout TriangleStream<GSOutput> triStream)
     }
 
     triStream.RestartStrip();
+
+#if VCT_USE_ANISOTROPIC_VOXELS
+    v.color = vsOutput[0].colorZ;
+#endif
 
     if (view.z > 0.0)
     {

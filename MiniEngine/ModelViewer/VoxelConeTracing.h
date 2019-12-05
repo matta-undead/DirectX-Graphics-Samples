@@ -4,6 +4,9 @@
 
 class ColorBuffer;
 
+// Anisotropic switch must match define in VctCommon.hlsli
+#define VCT_USE_ANISOTROPIC_VOXELS  1
+
 namespace VoxelConeTracing
 {
     enum { kVoxelDims = 256 };
@@ -17,7 +20,7 @@ namespace VoxelConeTracing
         FilteredVoxels
     };
 
-    ColorBuffer& GetVoxelBuffer (BufferType type);
+    ColorBuffer& GetVoxelBuffer (BufferType type, uint32_t idx = 0);
 
     uint32_t GetVoxelBufferDims (BufferType type);
 

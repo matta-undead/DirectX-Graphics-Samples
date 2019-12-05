@@ -13,8 +13,6 @@
 
 using namespace Graphics;
 
-#define VCT_USE_ANISOTROPIC_VOXELS  0
-
 namespace VoxelConeTracing
 {
     RootSignature s_RootSignature;
@@ -77,7 +75,7 @@ void VoxelConeTracing::Shutdown( void )
     }
 }
 
-ColorBuffer& VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType type)
+ColorBuffer& VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType type, uint32_t idx)
 {
     switch (type)
     {
@@ -85,7 +83,7 @@ ColorBuffer& VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType type)
         return s_VoxelBuffer;
 
     case VoxelConeTracing::BufferType::FilteredVoxels:
-        return s_VoxelMips[0];
+        return s_VoxelMips[idx];
 
     default:
         ASSERT(false, "Invalid voxel buffer type or cases need updating.");

@@ -63,7 +63,16 @@ Texture2DArray<float> lightShadowArrayTex : register(t67);
 ByteAddressBuffer lightGrid : register(t68);
 ByteAddressBuffer lightGridBitMask : register(t69);
 
+#if VCT_USE_ANISOTROPIC_VOXELS
+Texture3D<float4> texVoxelPosX : register(t70);
+Texture3D<float4> texVoxelNegX : register(t71);
+Texture3D<float4> texVoxelPosY : register(t72);
+Texture3D<float4> texVoxelNegY : register(t73);
+Texture3D<float4> texVoxelPosZ : register(t74);
+Texture3D<float4> texVoxelNegZ : register(t75);
+#else
 Texture3D<float4> texVoxel : register(t70);
+#endif // VCT_USE_ANISOTROPIC_VOXELS
 
 cbuffer PSConstants : register(b0)
 {
@@ -391,7 +400,27 @@ float3 main(VSOutput vsOutput) : SV_Target0
         voxelPos += voxelStep;
 
 #if VCT_APPLY_INDIRECT_LIGHT
-        float3 indirectLight = ApplyIndirectLight(diffuseAlbedo, tbn, texVoxel, sampler2, voxelPos, voxelStep); 
+
+    #if VCT_USE_ANISOTROPIC_VOXELS
+        float3 indirectLight = ApplyIndirectLightAniso(
+            diffuseAlbedo,
+            tbn,
+            texVoxelPosX,
+            texVoxelNegX,
+            texVoxelPosY,
+            texVoxelNegY,
+            texVoxelPosZ,
+            texVoxelNegZ,
+            sampler2,
+            voxelPos,
+            voxelStep
+        );
+    #else
+        float3 indirectLight = ApplyIndirectLight(diffuseAlbedo, tbn, texVoxel, sampler2, voxelPos, voxelStep);
+    #endif // VCT_USE_ANISOTROPIC_VOXELS
+
+
+
 #if VCT_APPLY_SSAO_TO_INDIRECT
         float ao = texSSAO[pixelPos];
         indirectLight *= ao;

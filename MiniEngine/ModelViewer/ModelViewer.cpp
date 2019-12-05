@@ -122,7 +122,8 @@ private:
     D3D12_CPU_DESCRIPTOR_HANDLE m_ShadowSampler;
     D3D12_CPU_DESCRIPTOR_HANDLE m_BiasedDefaultSampler;
 
-    D3D12_CPU_DESCRIPTOR_HANDLE m_ExtraTextures[7];
+    D3D12_CPU_DESCRIPTOR_HANDLE m_ExtraTextures[12];
+
     Model m_Model;
     std::vector<bool> m_pMaterialIsCutout;
 
@@ -171,7 +172,7 @@ void ModelViewer::Startup( void )
     m_RootSig[0].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_VERTEX);
     m_RootSig[1].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[2].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 6, D3D12_SHADER_VISIBILITY_PIXEL);
-    m_RootSig[3].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 64, 7, D3D12_SHADER_VISIBILITY_PIXEL);
+    m_RootSig[3].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 64, 12, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[4].InitAsConstants(1, 2, D3D12_SHADER_VISIBILITY_VERTEX);
     m_RootSig[5].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig.Finalize(L"ModelViewer", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -333,10 +334,27 @@ void ModelViewer::Startup( void )
     VoxelConeTracing::Initialize();
 
     m_ExtraTextures[6] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels).GetSRV();
+#if VCT_USE_ANISOTROPIC_VOXELS
+    m_ExtraTextures[7] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, 1).GetSRV();
+    m_ExtraTextures[8] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, 2).GetSRV();
+    m_ExtraTextures[9] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, 3).GetSRV();
+    m_ExtraTextures[10] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, 4).GetSRV();
+    m_ExtraTextures[11] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, 5).GetSRV();
+#else
+    m_ExtraTextures[7] = m_ExtraTextures[6];
+    m_ExtraTextures[8] = m_ExtraTextures[6];
+    m_ExtraTextures[9] = m_ExtraTextures[6];
+    m_ExtraTextures[10] = m_ExtraTextures[6];
+    m_ExtraTextures[11] = m_ExtraTextures[6];
+#endif // VCT_USE_ANISOTROPIC_VOXELS
 
     m_VoxelViewerRS.Reset(2, 0);
     m_VoxelViewerRS[0].InitAsConstantBuffer(0, D3D12_SHADER_VISIBILITY_ALL);
+#if VCT_USE_ANISOTROPIC_VOXELS
+    m_VoxelViewerRS[1].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 6, D3D12_SHADER_VISIBILITY_VERTEX);
+#else
     m_VoxelViewerRS[1].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 1, D3D12_SHADER_VISIBILITY_VERTEX);
+#endif
     m_VoxelViewerRS.Finalize(L"VoxelViewer", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     m_VoxelViewerPSO.SetRootSignature(m_VoxelViewerRS);
@@ -766,6 +784,12 @@ void ModelViewer::RenderScene( void )
 
         gfxContext.SetDynamicConstantBufferView(0, sizeof(voxelConstants), &voxelConstants);
         gfxContext.SetDynamicDescriptor(1, 0, VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels).GetSRV());
+#if VCT_USE_ANISOTROPIC_VOXELS
+        for (uint32_t i = 1; i < 6; ++i)
+        {
+            gfxContext.SetDynamicDescriptor(1, i, VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, i).GetSRV());
+        }
+#endif
 
         gfxContext.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
         gfxContext.ClearColor(g_SceneColorBuffer);
