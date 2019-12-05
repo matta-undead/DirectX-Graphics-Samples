@@ -1,11 +1,7 @@
 
-#include "ModelViewerRS.hlsli"
-#include "LightGrid.hlsli"
+#include "VctCommon.hlsli"
 
-// outdated warning about for-loop variable scope
-#pragma warning (disable: 3078)
-// single-iteration loop
-#pragma warning (disable: 3557)
+// vct per pass defines
 
 // toggle light types on and off
 #define APPLY_AMBIENT_LIGHT                     0
@@ -14,25 +10,15 @@
 #define APPLY_NON_DIRECTIONAL_LIGHTS            0
 // sample previous frame's indirect light
 #define VCT_APPLY_INDIRECT_LIGHT                0
-#define VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI    0
 
-#define VCT_USE_ANISOTROPIC_VOXELS              0
 
-#define CONE_DIR_0      float3(0.0, 1.0, 0.0)
-#define CONE_DIR_1      float3(0.0, 0.5, 0.866025)
-#define CONE_DIR_2      float3(0.823639, 0.5, 0.267617)
-#define CONE_DIR_3      float3(0.509037, 0.5, -0.700629)
-#define CONE_DIR_4      float3(-0.509037, 0.5, -0.700629)
-#define CONE_DIR_5      float3(-0.823639, 0.5, 0.267617)
+#include "ModelViewerRS.hlsli"
+#include "LightGrid.hlsli"
 
-#if VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI
-    #define CONE_WEIGHT_UP      (5.0/(20.0*3.14159))
-    #define CONE_WEIGHT_SIDE    (3.0/(20.0*3.14159))
-#else
-    #define CONE_WEIGHT_UP      (5.0/20.0)
-    #define CONE_WEIGHT_SIDE    (3.0/20.0)
-#endif
-
+// outdated warning about for-loop variable scope
+#pragma warning (disable: 3078)
+// single-iteration loop
+#pragma warning (disable: 3557)
 
 struct VSOutput
 {
@@ -122,10 +108,29 @@ void ImageAtomicAverage(uint3 coords, float4 val)
     }
 }
 
+void WriteVoxelValue (uint3 voxelPos, float4 color, float3 geometryNormal)
+{
+#if VCT_USE_ANISOTROPIC_VOXELS
 
+    // Store unique value per +/-x, +/-y, +/-z
+    uint3 voxelPosBase = voxelPos;
+    voxelPosBase.x *= 6;
 
+    float xWeight = geometryNormal.x;
+    float yWeight = geometryNormal.y;
+    float zWeight = geometryNormal.z;
 
+    ImageAtomicAverage(voxelPosBase + uint3(0, 0, 0), float4(color.xyz * saturate( xWeight), 1.0) );
+    ImageAtomicAverage(voxelPosBase + uint3(1, 0, 0), float4(color.xyz * saturate(-xWeight), 1.0) );
+    ImageAtomicAverage(voxelPosBase + uint3(2, 0, 0), float4(color.xyz * saturate( yWeight), 1.0) );
+    ImageAtomicAverage(voxelPosBase + uint3(3, 0, 0), float4(color.xyz * saturate(-yWeight), 1.0) );
+    ImageAtomicAverage(voxelPosBase + uint3(4, 0, 0), float4(color.xyz * saturate( zWeight), 1.0) );
+    ImageAtomicAverage(voxelPosBase + uint3(5, 0, 0), float4(color.xyz * saturate(-zWeight), 1.0) );
 
+#else
+    ImageAtomicAverage(voxelPos, color);
+#endif
+}
 
 
 cbuffer PSConstants : register(b0)
@@ -401,8 +406,6 @@ uint64_t Ballot64(bool b)
 #endif // _WAVE_OP
 
 
-
-
 // Helper function for iterating over a sparse list of bits.  Gets the offset of the next
 // set bit, clears it, and returns the offset.
 uint PullNextBit( inout uint bits )
@@ -412,84 +415,6 @@ uint PullNextBit( inout uint bits )
     return bitIndex;
 }
 
-
-float3 TraceCone(float3 voxelPos, float3 voxelStep, float normalizedConeDiameter)
-{
-    float opacity = 0.0;
-    float transmitted = 1.0;
-    float3 indirectLight = float3(0.0, 0.0, 0.0);
-
-    // I think voxelSample.w (alpha/opacity) is already factored into
-    // voxelSample.xyz from mip filtering and doesn't need to be multiplied
-    // against voxelSample.xyz again here, but I could be wrong. And then,
-    // what about that factor of PI? In weight or not, pending define above.
-
-    // Handle cone diameter. For example, in the diffuse case,
-    // hemisphere is modelled by six cones with a 60 degree
-    // opening. Tan(60/2) ~= 0.577350, 2x that ~= 1.154701,
-    // this is the scale from cone length to diameter, which
-    // should guide mip selection.
-    // want log2(dist * 1.154701) -> mip.
-    // dist would need to be in relevant units, scale by voxel size.
-    float distanceScalar = length(voxelStep) * (128.0 * normalizedConeDiameter);//1.154701);
-
-    voxelPos += 2.0 * voxelStep;
-    float4 voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*2.0) );
-    indirectLight = voxelSample.xyz * transmitted;
-    opacity += voxelSample.w * transmitted;
-    transmitted = saturate(1.0 - opacity);
-
-    voxelPos += 4.0 * voxelStep;
-    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*4.0) );
-    indirectLight += voxelSample.xyz * transmitted;
-    opacity += voxelSample.w * transmitted;
-    transmitted = saturate(1.0 - opacity);
-
-    voxelPos += 8.0 * voxelStep;
-    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*8.0) );
-    indirectLight += voxelSample.xyz * transmitted;
-    opacity += voxelSample.w * transmitted;
-    transmitted = saturate(1.0 - opacity);
-
-    voxelPos += 16.0 * voxelStep;
-    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*16.0) );
-    indirectLight += voxelSample.xyz * transmitted;
-    opacity += voxelSample.w * transmitted;
-    transmitted = saturate(1.0 - opacity);
-
-    voxelPos += 32.0 * voxelStep;
-    voxelSample = texVoxel.SampleLevel(sampler2, voxelPos, log2(distanceScalar*32.0) );
-    indirectLight += voxelSample.xyz * transmitted;
-    //opacity += voxelSample.w * transmitted;
-    //transmitted = saturate(1.0 - opacity);
-
-    return indirectLight;
-}
-
-
-void WriteVoxelValue (uint3 voxelPos, float4 color, float3 geometryNormal)
-{
-#if VCT_USE_ANISOTROPIC_VOXELS
-
-    // Store unique value per +/-x, +/-y, +/-z
-    uint3 voxelPosBase = voxelPos;
-    voxelPosBase.x *= 6;
-
-    float xWeight = geometryNormal.x;
-    float yWeight = geometryNormal.y;
-    float zWeight = geometryNormal.z;
-
-    ImageAtomicAverage(voxelPosBase + uint3(0, 0, 0), float4(color.xyz * saturate( xWeight), 1.0) );
-    ImageAtomicAverage(voxelPosBase + uint3(1, 0, 0), float4(color.xyz * saturate(-xWeight), 1.0) );
-    ImageAtomicAverage(voxelPosBase + uint3(2, 0, 0), float4(color.xyz * saturate( yWeight), 1.0) );
-    ImageAtomicAverage(voxelPosBase + uint3(3, 0, 0), float4(color.xyz * saturate(-yWeight), 1.0) );
-    ImageAtomicAverage(voxelPosBase + uint3(4, 0, 0), float4(color.xyz * saturate( zWeight), 1.0) );
-    ImageAtomicAverage(voxelPosBase + uint3(5, 0, 0), float4(color.xyz * saturate(-zWeight), 1.0) );
-
-#else
-    ImageAtomicAverage(voxelPos, color);
-#endif
-}
 
 [RootSignature(ModelViewer_RootSig)]
 //float3 main(VSOutput vsOutput) : SV_Target0
@@ -552,24 +477,24 @@ void main(GSOutput vsOutput)
             float3 indirectLight = float3(0.0, 0.0, 0.0);
 
             float3 coneDir = normalize(mul(CONE_DIR_1, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(voxelPos, coneDir, 1.154701);
+            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
 
             coneDir = normalize(mul(CONE_DIR_2, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(voxelPos, coneDir, 1.154701);
+            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
 
             coneDir = normalize(mul(CONE_DIR_3, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(voxelPos, coneDir, 1.154701);
+            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
 
             coneDir = normalize(mul(CONE_DIR_4, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(voxelPos, coneDir, 1.154701);
+            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
 
             coneDir = normalize(mul(CONE_DIR_5, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(voxelPos, coneDir, 1.154701);
+            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
 
             // all non-up facing cones have same weighting
             indirectLight *= CONE_WEIGHT_SIDE;
 
-            indirectLight += TraceCone(voxelPos, voxelStep, 1.154701) * CONE_WEIGHT_UP;
+            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, voxelStep, 1.154701) * CONE_WEIGHT_UP;
 
 #if 1
             // magenta tint for secondary bounce

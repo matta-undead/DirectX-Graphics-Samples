@@ -152,6 +152,7 @@
     <None Include="Shaders\FillLightGridCS.hlsli" />
     <None Include="Shaders\LightGrid.hlsli" />
     <None Include="Shaders\ModelViewerRS.hlsli" />
+    <None Include="Shaders\VctCommon.hlsli" />
     <None Include="Shaders\VctModelViewerRS.hlsli" />
     <None Include="Shaders\VoxelViewerRS.hlsli" />
   </ItemGroup>

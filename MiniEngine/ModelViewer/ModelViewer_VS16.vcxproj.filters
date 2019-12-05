@@ -218,6 +218,9 @@
     <None Include="Shaders\VctModelViewerRS.hlsli">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="Shaders\VctCommon.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ModelViewer.cpp">
