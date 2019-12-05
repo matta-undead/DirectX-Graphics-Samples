@@ -817,7 +817,7 @@ void main(GSOutput vsOutput)
 
     float4 newVal = float4(diffuseAlbedo, 1.0);
 #if APPLY_AMBIENT_LIGHT || APPLY_DIRECTIONAL_LIGHT || APPLY_NON_DIRECTIONAL_LIGHTS
-    newVal.xyz = colorSum / (1.0+colorSum);
+    newVal.xyz = saturate(colorSum * VOXEL_PACK_SCALE);
 #endif
 
     //ImageAtomicAverage(voxelPos, newVal);

@@ -317,10 +317,10 @@ void ModelViewer::Startup( void )
     m_CameraController.reset(new CameraController(m_Camera, Vector3(kYUnitVector)));
 
     MotionBlur::Enable = true;
-    TemporalEffects::EnableTAA = true;
-    FXAA::Enable = false;
+    TemporalEffects::EnableTAA = false;
+    FXAA::Enable = true;
     PostEffects::EnableHDR = true;
-    PostEffects::EnableAdaptation = true;
+    PostEffects::EnableAdaptation = false;
     SSAO::Enable = true;
 
     Lighting::CreateRandomLights(m_Model.GetBoundingBox().min, m_Model.GetBoundingBox().max);
