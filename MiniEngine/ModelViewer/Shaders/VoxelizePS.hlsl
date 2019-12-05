@@ -10,6 +10,8 @@
 #define APPLY_NON_DIRECTIONAL_LIGHTS            0
 // sample previous frame's indirect light
 #define VCT_APPLY_INDIRECT_LIGHT                0
+// colorize secondary bounce
+#define VCT_APPLY_DEBUG_TINT_TO_INDIRECT_LIGHT  1
 
 
 #include "ModelViewerRS.hlsli"
@@ -466,46 +468,17 @@ void main(GSOutput vsOutput)
         float3 worldPos = vsOutput.worldPos.xyz;
         float3 voxelPos = (worldPos - worldMin) / (worldMax - worldMin);
 
-        float3 indirectLight = float3(0.0, 0.0, 0.0);
-
         // high res voxel step size
         float3 voxelStep = normalize(vsOutput.normal) * (1.0/128.0);
         // step away from surface to avoid self lighting
         voxelPos += voxelStep;
 
-        {
-            float3 indirectLight = float3(0.0, 0.0, 0.0);
-
-            float3 coneDir = normalize(mul(CONE_DIR_1, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
-
-            coneDir = normalize(mul(CONE_DIR_2, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
-
-            coneDir = normalize(mul(CONE_DIR_3, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
-
-            coneDir = normalize(mul(CONE_DIR_4, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
-
-            coneDir = normalize(mul(CONE_DIR_5, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
-
-            // all non-up facing cones have same weighting
-            indirectLight *= CONE_WEIGHT_SIDE;
-
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, voxelStep, 1.154701) * CONE_WEIGHT_UP;
-
-#if 1
-            // magenta tint for secondary bounce
-            float amt = dot(indirectLight, float3(0.33, 0.34, 0.33));
-            indirectLight = float3(amt, 0.0, amt);
+        float3 indirectLight = ApplyIndirectLight(diffuseAlbedo, tbn, texVoxel, sampler2, voxelPos, voxelStep);
+#if VCT_APPLY_DEBUG_TINT_TO_INDIRECT_LIGHT
+        float indirectAvg = dot(indirectLight, float3(0.33, 0.34, 0.33));
+        indirectLight = float3(indirectAvg, 0.0, indirectAvg);
 #endif
-            indirectLight *= diffuseAlbedo;
-            colorSum += indirectLight.xyz;
-        }
-
-        
+        colorSum += indirectLight;        
     }
 #endif // VCT_APPLY_INDIRECT_LIGHT
 

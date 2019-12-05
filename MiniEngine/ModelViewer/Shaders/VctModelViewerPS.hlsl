@@ -391,39 +391,14 @@ float3 main(VSOutput vsOutput) : SV_Target0
         voxelPos += voxelStep;
 
 #if VCT_APPLY_INDIRECT_LIGHT
-        // 1.154701 is diameter of base of 60 degree cone with height 1.0
-        // take tan of half angle, double it. tan(60/2) ~= 0.577350.
-        {
-            float3 indirectLight = float3(0.0, 0.0, 0.0);
-
-            float3 coneDir = normalize(mul(CONE_DIR_1, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
-
-            coneDir = normalize(mul(CONE_DIR_2, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
-
-            coneDir = normalize(mul(CONE_DIR_3, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
-
-            coneDir = normalize(mul(CONE_DIR_4, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
-
-            coneDir = normalize(mul(CONE_DIR_5, tbn)) * (1.0/128.0);
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, coneDir, 1.154701);
-
-            // all non-up facing cones have same weighting
-            indirectLight *= CONE_WEIGHT_SIDE;
-
-            indirectLight += TraceCone(texVoxel, sampler2, voxelPos, voxelStep, 1.154701) * CONE_WEIGHT_UP;
-
+        float3 indirectLight = ApplyIndirectLight(diffuseAlbedo, tbn, texVoxel, sampler2, voxelPos, voxelStep); 
 #if VCT_APPLY_SSAO_TO_INDIRECT
-            float ao = texSSAO[pixelPos];
-            indirectLight *= ao;
+        float ao = texSSAO[pixelPos];
+        indirectLight *= ao;
 #endif // VCT_APPLY_SSAO_TO_INDIRECT
-
-            colorSum += indirectLight * diffuseAlbedo;
-        }
+        colorSum += indirectLight;
 #endif // VCT_APPLY_INDIRECT_LIGHT
+
 
 #if VCT_APPLY_INDIRECT_LIGHT_SPECULAR
         {

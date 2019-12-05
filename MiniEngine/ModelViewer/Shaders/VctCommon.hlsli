@@ -108,3 +108,37 @@ float3 TraceConeSpec(
 
     return indirectLight;
 }
+
+float3 ApplyIndirectLight(
+    float3 diffuseAlbedo,
+    float3x3 tbn,
+    in Texture3D<float4> voxelTex,
+    in SamplerState voxelSmp,
+    float3 voxelPos,
+    float3 voxelStep
+)
+{
+    // 1.154701 is diameter of base of 60 degree cone with height 1.0
+    // take tan of half angle, double it. tan(60/2) ~= 0.577350.
+    float3 coneDir = normalize(mul(CONE_DIR_1, tbn)) * (1.0/128.0);
+    float3 indirectSum = TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+
+    coneDir = normalize(mul(CONE_DIR_2, tbn)) * (1.0/128.0);
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+
+    coneDir = normalize(mul(CONE_DIR_3, tbn)) * (1.0/128.0);
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+
+    coneDir = normalize(mul(CONE_DIR_4, tbn)) * (1.0/128.0);
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+
+    coneDir = normalize(mul(CONE_DIR_5, tbn)) * (1.0/128.0);
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+
+    // all non-up facing cones have same weighting
+    indirectSum *= CONE_WEIGHT_SIDE;
+
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, voxelStep, 1.154701) * CONE_WEIGHT_UP;
+
+    return (indirectSum * diffuseAlbedo);
+}
