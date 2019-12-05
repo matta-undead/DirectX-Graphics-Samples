@@ -570,16 +570,17 @@ void main(GSOutput vsOutput)
             indirectLight *= CONE_WEIGHT_SIDE;
 
             indirectLight += TraceCone(voxelPos, voxelStep, 1.154701) * CONE_WEIGHT_UP;
+
+#if 1
+            // magenta tint for secondary bounce
+            float amt = dot(indirectLight, float3(0.33, 0.34, 0.33));
+            indirectLight = float3(amt, 0.0, amt);
+#endif
+            indirectLight *= diffuseAlbedo;
+            colorSum += indirectLight.xyz;
         }
 
-        float3 cone0 = TraceCone(voxelPos, voxelStep) * CONE_WEIGHT_UP;
-
-        indirectLight += cone0 * saturate(dot(normal, normalize(vsOutput.normal)));
-
-        float amt = dot(indirectLight, float3(0.33, 0.34, 0.33));
-        indirectLight = float3(amt, 0.0, amt);
-
-        colorSum += indirectLight.xyz;// * diffuseAlbedo;
+        
     }
 #endif // VCT_APPLY_INDIRECT_LIGHT
 
