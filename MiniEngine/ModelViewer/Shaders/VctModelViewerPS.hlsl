@@ -86,6 +86,11 @@ cbuffer PSConstants : register(b0)
     uint4 FirstLightIndex;
 }
 
+// Root constants
+float2 VctParams0 : register(b1);
+#define DisplaySun      (VctParams0.x)
+#define DisplayIndirect (VctParams0.y)
+
 SamplerState sampler0 : register(s0);
 SamplerComparisonState shadowSampler : register(s1);
 SamplerState sampler2 : register(s2);
@@ -367,7 +372,7 @@ float3 main(VSOutput vsOutput) : SV_Target0
         float ao = texSSAO[pixelPos];
         colorSum += ApplyAmbientLight( diffuseAlbedo, ao, AmbientColor );
     }
-#endif // VCT_APPLY_DIRECTIONAL_LIGHT
+#endif // VCT_APPLY_AMBIENT_LIGHT
 
     float gloss = 128.0;
     float3 normal;
@@ -382,7 +387,19 @@ float3 main(VSOutput vsOutput) : SV_Target0
     float specularMask = texSpecular.Sample(sampler0, vsOutput.uv).g;
     float3 viewDir = normalize(vsOutput.viewDir);
 #if VCT_APPLY_DIRECTIONAL_LIGHT
-    colorSum += ApplyDirectionalLight( diffuseAlbedo, specularAlbedo, specularMask, gloss, normal, viewDir, SunDirection, SunColor, vsOutput.shadowCoord );
+    if (0.0 < DisplaySun) {
+        colorSum += ApplyDirectionalLight(
+            diffuseAlbedo,
+            specularAlbedo,
+            specularMask,
+            gloss,
+            normal,
+            viewDir,
+            SunDirection,
+            SunColor,
+            vsOutput.shadowCoord
+        );
+    }
 #endif // VCT_APPLY_DIRECTIONAL_LIGHT
 
     {
@@ -425,7 +442,10 @@ float3 main(VSOutput vsOutput) : SV_Target0
         float ao = texSSAO[pixelPos];
         indirectLight *= ao;
 #endif // VCT_APPLY_SSAO_TO_INDIRECT
-        colorSum += indirectLight;
+        if (DisplayIndirect)
+        {
+            colorSum += indirectLight;
+        }
 #endif // VCT_APPLY_INDIRECT_LIGHT
 
 

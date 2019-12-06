@@ -5,7 +5,7 @@
 class ColorBuffer;
 
 // Anisotropic switch must match define in VctCommon.hlsli
-#define VCT_USE_ANISOTROPIC_VOXELS  1
+#define VCT_USE_ANISOTROPIC_VOXELS  0
 
 namespace VoxelConeTracing
 {

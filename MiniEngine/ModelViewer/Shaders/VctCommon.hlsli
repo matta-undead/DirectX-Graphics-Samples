@@ -2,7 +2,7 @@
 // common defines
 
 // Anisotropic swtich must match define in VoxelConeTracing.h
-#define VCT_USE_ANISOTROPIC_VOXELS              1
+#define VCT_USE_ANISOTROPIC_VOXELS              0
 #define VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI    0
 
 #if VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI

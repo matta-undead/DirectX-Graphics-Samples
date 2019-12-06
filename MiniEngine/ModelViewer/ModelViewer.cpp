@@ -146,6 +146,10 @@ BoolVar ShowWaveTileCounts("Application/Forward+/Show Wave Tile Counts", false);
 BoolVar EnableWaveOps("Application/Forward+/Enable Wave Ops", true);
 #endif
 
+BoolVar DisplaySun("Application/VCT/Display Sun", true);
+BoolVar DisplayIndirect("Application/VCT/Display Indirect", true);
+BoolVar ShowVoxels("Application/VCT/Show Voxels", false);
+
 void ModelViewer::Startup( void )
 {
     SamplerDesc DefaultSamplerDesc;
@@ -165,7 +169,7 @@ void ModelViewer::Startup( void )
     VoxelSamplerDesc.MinLOD = 0.0f;
     VoxelSamplerDesc.MaxLOD = 5.0f;
 
-    m_RootSig.Reset(6, 3);
+    m_RootSig.Reset(7, 3);
     m_RootSig.InitStaticSampler(0, DefaultSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig.InitStaticSampler(1, SamplerShadowDesc, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig.InitStaticSampler(2, VoxelSamplerDesc, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -175,6 +179,7 @@ void ModelViewer::Startup( void )
     m_RootSig[3].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 64, 12, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig[4].InitAsConstants(1, 2, D3D12_SHADER_VISIBILITY_VERTEX);
     m_RootSig[5].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1, D3D12_SHADER_VISIBILITY_PIXEL);
+    m_RootSig[6].InitAsConstants(1, 2, D3D12_SHADER_VISIBILITY_PIXEL);
     m_RootSig.Finalize(L"ModelViewer", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     DXGI_FORMAT ColorFormat = g_SceneColorBuffer.GetFormat();
@@ -715,6 +720,12 @@ void ModelViewer::RenderScene( void )
             gfxContext.SetDynamicDescriptors(3, 0, _countof(m_ExtraTextures), m_ExtraTextures);
             gfxContext.SetDynamicConstantBufferView(1, sizeof(psConstants), &psConstants);
 
+            gfxContext.SetConstants(
+                6,
+                DisplaySun ? 1.0f : 0.0f,
+                DisplayIndirect ? 1.0f : 0.0f
+            );
+
             gfxContext.SetDynamicDescriptor(5, 0, VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::InitialVoxelization).GetUAV());
 
 #ifdef _WAVE_OP
@@ -755,7 +766,7 @@ void ModelViewer::RenderScene( void )
         MotionBlur::RenderObjectBlur(gfxContext, g_VelocityBuffer);
 
     // tack some debug drawing on the end to visualize voxels
-    if (0)
+    if (ShowVoxels)
     {
         gfxContext.SetRootSignature(m_VoxelViewerRS);
         gfxContext.SetPipelineState(m_VoxelViewerPSO);
