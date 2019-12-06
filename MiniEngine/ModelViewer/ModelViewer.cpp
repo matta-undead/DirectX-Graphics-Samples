@@ -149,6 +149,7 @@ BoolVar EnableWaveOps("Application/Forward+/Enable Wave Ops", true);
 BoolVar DisplaySun("Application/VCT/Display Sun", true);
 BoolVar DisplayIndirect("Application/VCT/Display Indirect", true);
 BoolVar ShowVoxels("Application/VCT/Show Voxels", false);
+BoolVar AnimateSun("Application/VCT/Animate Sun", true);
 
 void ModelViewer::Startup( void )
 {
@@ -435,11 +436,25 @@ void ModelViewer::Update( float deltaT )
         m_VoxelViewProjMatrix = ortho2 * zView3;
     }
 
+    static uint32_t frameBasedSunShift = 0;
+    if (AnimateSun)
+    {
+        ++frameBasedSunShift;
+    }
+    float sunShift = float(frameBasedSunShift % 1000) / 1000.0f;
+    // Convert to triangle wave
+    sunShift = fabsf(sunShift - 0.5f) * 2.0f;
+    // Apply smoothstep to ease in and out
+    sunShift = (sunShift*sunShift) * (3.0f - 2.0f*sunShift);
+    // Scale to +/- 0.25
+    sunShift = sunShift * 0.5f - 0.25f;
+    // Add to sun inclination of 0.75, resulting in sun between 0.5 and 1.0
+    float shiftedSun = m_SunInclination + sunShift;
 
     float costheta = cosf(m_SunOrientation);
     float sintheta = sinf(m_SunOrientation);
-    float cosphi = cosf(m_SunInclination * 3.14159f * 0.5f);
-    float sinphi = sinf(m_SunInclination * 3.14159f * 0.5f);
+    float cosphi = cosf(shiftedSun * 3.14159f * 0.5f);
+    float sinphi = sinf(shiftedSun * 3.14159f * 0.5f);
     m_SunDirection = Normalize(Vector3( costheta * cosphi, sinphi, sintheta * cosphi ));
 
     // We use viewport offsets to jitter sample positions from frame to frame (for TAA.)
