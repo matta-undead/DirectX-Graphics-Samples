@@ -445,7 +445,7 @@ void main(GSOutput vsOutput)
         normal = normalize(mul(normal, tbn));
     //}
 
-#if 1
+#if 0
     float3 specularAlbedo = float3( 0.56, 0.56, 0.56 );
     float specularMask = texSpecular.Sample(sampler0, vsOutput.uv).g;
 #else
