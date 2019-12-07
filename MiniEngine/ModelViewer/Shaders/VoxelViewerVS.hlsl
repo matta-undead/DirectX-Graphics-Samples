@@ -1,5 +1,7 @@
 #include "VctCommon.hlsli"
 
+#define VCT_DEBUG_SHOW_ANISO_VOXEL_FACES    0
+
 cbuffer VSConstants : register(b0)
 {
     float4x4 worldToProjection;
@@ -84,12 +86,22 @@ VSOutput main(
     vsOutput.viewDir = viewerPosition - worldPosition;
 
 #if VCT_USE_ANISOTROPIC_VOXELS
+
     if (vsOutput.viewDir.x < 0.0)
     {
         vsOutput.color = valNegX;
     }
     vsOutput.colorY = (vsOutput.viewDir.y < 0.0) ? valNegY : valPosY;
     vsOutput.colorZ = (vsOutput.viewDir.z < 0.0) ? valNegZ : valPosZ;
+
+#if VCT_DEBUG_SHOW_ANISO_VOXEL_FACES
+    // preserve .w value for opacity
+    float3 viewDir  = vsOutput.viewDir.xyz;
+    vsOutput.color.xyz  = viewDir.x < 0.0 ? float3(0.0, 0.5, 0.5) : float3(1.0, 0.5, 0.5);
+    vsOutput.colorY.xyz = viewDir.y < 0.0 ? float3(0.5, 0.0, 0.5) : float3(0.5, 1.0, 0.5);
+    vsOutput.colorZ.xyz = viewDir.z < 0.0 ? float3(0.5, 0.5, 0.0) : float3(0.5, 0.5, 1.0);
+#endif // VCT_DEBUG_SHOW_ANISO_VOXEL_FACES
+
 #endif
 
     return vsOutput;
