@@ -454,7 +454,7 @@ void main(GSOutput vsOutput)
 #endif
     float3 viewDir = normalize(vsOutput.viewDir);
 #if APPLY_DIRECTIONAL_LIGHT
-    colorSum += ApplyDirectionalLight( diffuseAlbedo, specularAlbedo, specularMask, gloss, normal, viewDir, SunDirection, SunColor, vsOutput.shadowCoord );
+    colorSum += ApplyDirectionalLight( diffuseAlbedo, specularAlbedo, specularMask, gloss, normalize(vsOutput.normal), viewDir, SunDirection, SunColor, vsOutput.shadowCoord );
 #endif // APPLY_DIRECTIONAL_LIGHT
 
 

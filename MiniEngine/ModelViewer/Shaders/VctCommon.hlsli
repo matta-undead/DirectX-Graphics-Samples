@@ -13,12 +13,12 @@
     #define CONE_WEIGHT_SIDE    ((3.0*3.14159)/20.0)
 #endif
 
-#define CONE_DIR_0      float3(0.0, 1.0, 0.0)
-#define CONE_DIR_1      float3(0.0, 0.5, 0.866025)
-#define CONE_DIR_2      float3(0.823639, 0.5, 0.267617)
-#define CONE_DIR_3      float3(0.509037, 0.5, -0.700629)
-#define CONE_DIR_4      float3(-0.509037, 0.5, -0.700629)
-#define CONE_DIR_5      float3(-0.823639, 0.5, 0.267617)
+#define CONE_DIR_0      float3(0.0, 0.0, 1.0)
+#define CONE_DIR_1      float3(0.0, 0.866025, 0.5)
+#define CONE_DIR_2      float3(0.823639, 0.267617, 0.5)
+#define CONE_DIR_3      float3(0.509037, -0.700629, 0.5)
+#define CONE_DIR_4      float3(-0.509037, -0.700629, 0.5)
+#define CONE_DIR_5      float3(-0.823639, 0.267617, 0.5)
 
 // Taking a fifth sample, at least with current doubling step sizes
 // introduces an almost global ambient value thanks to light bleed.
@@ -113,7 +113,9 @@ float3 TraceConeAniso(
     float3 indirectLight = float3(0.0, 0.0, 0.0);
 
     // Need weights to blend three voxel faces
-    float3 weights = abs(normalize(voxelStep));
+    float3 weights = abs(voxelStep);
+    float weightTotal = weights.x + weights.y + weights.z;
+    weights *= (1.0/(weightTotal+1e-5));
 
     for (uint i = 0; (i < CONE_STEPS) && (transmitted > 0.0); ++i)
     {
@@ -208,7 +210,8 @@ float3 ApplyIndirectLight(
     // all non-up facing cones have same weighting
     indirectSum *= CONE_WEIGHT_SIDE;
 
-    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, voxelStep, 1.154701) * CONE_WEIGHT_UP;
+    coneDir = normalize(mul(CONE_DIR_0, tbn)) * (1.0/128.0);
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
 
     return (indirectSum * diffuseAlbedo) * VOXEL_UNPACK_SCALE;
 }
@@ -243,6 +246,7 @@ float3 ApplyIndirectLightAnisoHelper(
     // all non-up facing cones have same weighting
     indirectSum *= CONE_WEIGHT_SIDE;
 
+    coneDir = normalize(mul(CONE_DIR_0, tbn)) * (1.0/128.0);
     indirectSum += TraceConeAniso(voxelTexX, voxelTexY, voxelTexZ, voxelSmp, voxelPos, voxelStep, 1.154701) * CONE_WEIGHT_UP;
  
     return indirectSum;

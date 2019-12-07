@@ -360,6 +360,16 @@ uint PullNextBit( inout uint bits )
     return bitIndex;
 }
 
+float3x3 BuildTangentFrameFromNormal(float3 normal)
+{
+    float3 t0 = cross(float3(0.0, 1.0, 0.0), normal);
+    float3 t1 = cross(float3(0.0, 0.0, 1.0), normal);
+    float3 tangent = normalize( (length(t0) < length(t1)) ? t1 : t0);
+    float3 bitangent = normalize(cross(tangent, normal));
+    tangent = normalize(cross(bitangent, normal));
+    return float3x3(tangent, bitangent, normal);
+}
+
 
 [RootSignature(ModelViewer_RootSig)]
 float3 main(VSOutput vsOutput) : SV_Target0
@@ -412,16 +422,28 @@ float3 main(VSOutput vsOutput) : SV_Target0
         float3 voxelPos = (worldPos - worldMin) / (worldMax - worldMin);
 
         // high res voxel step size
-        float3 voxelStep = normalize(vsOutput.normal) * (1.0/128.0);
+        float3 geomNormal = normalize(vsOutput.normal);
+        float3 voxelStep = geomNormal * (1.0/128.0);
+
         // step away from surface to avoid self lighting
-        voxelPos += voxelStep;
+        // division by magnitude of greatest component to set that
+        // component to 1. step 1 voxel away.
+        float3 absGN = abs(geomNormal);
+        float maxGN = max(absGN.x, max(absGN.y, max(absGN.z, 1e-4)));
+        float3 voxelOffset = geomNormal * (1.0 / maxGN) * (1.0/128.0);
+        voxelPos += voxelOffset;
+
+        // construct tangent frame from normal instead of provided tangent and bitangent.
+        // want consistent frame across surface instead of change at mirrored uv boundary
+        // and want to support eventually geometry that does not provide tangent or uvs.
+        float3x3 tanFrame = BuildTangentFrameFromNormal(geomNormal);
 
 #if VCT_APPLY_INDIRECT_LIGHT
 
     #if VCT_USE_ANISOTROPIC_VOXELS
         float3 indirectLight = ApplyIndirectLightAniso(
             diffuseAlbedo,
-            tbn,
+            tanFrame,
             texVoxelPosX,
             texVoxelNegX,
             texVoxelPosY,
@@ -433,9 +455,14 @@ float3 main(VSOutput vsOutput) : SV_Target0
             voxelStep
         );
     #else
-        float3 indirectLight = ApplyIndirectLight(diffuseAlbedo, tbn, texVoxel, sampler2, voxelPos, voxelStep);
+        float3 indirectLight = ApplyIndirectLight(diffuseAlbedo, tanFrame, texVoxel, sampler2, voxelPos, voxelStep);
     #endif // VCT_USE_ANISOTROPIC_VOXELS
 
+
+    // Debug visualize cone directions
+    //float3 visCone = normalize(mul(CONE_DIR_2, tanFrame));
+    //visCone = visCone * 0.5 + 0.5;
+    //indirectLight = lerp(visCone, indirectLight, 1e-4);
 
 
 #if VCT_APPLY_SSAO_TO_INDIRECT
