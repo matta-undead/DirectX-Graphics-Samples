@@ -440,6 +440,10 @@ float3 main(VSOutput vsOutput) : SV_Target0
 
 #if VCT_APPLY_INDIRECT_LIGHT
 
+#if VCT_OCCLUSION_MODE
+    float outVisibility = 0.0;
+#endif
+
     #if VCT_USE_ANISOTROPIC_VOXELS
         float3 indirectLight = ApplyIndirectLightAniso(
             diffuseAlbedo,
@@ -455,7 +459,18 @@ float3 main(VSOutput vsOutput) : SV_Target0
             voxelStep
         );
     #else
-        float3 indirectLight = ApplyIndirectLight(diffuseAlbedo, tanFrame, texVoxel, sampler2, voxelPos, voxelStep);
+        float3 indirectLight = ApplyIndirectLight(
+            diffuseAlbedo,
+            tanFrame,
+            texVoxel,
+            sampler2,
+            voxelPos,
+            voxelStep
+#if VCT_OCCLUSION_MODE
+            , (worldMax - worldMin), // worldScale
+            outVisibility
+#endif // VCT_OCCLUSION_MODE
+        );
     #endif // VCT_USE_ANISOTROPIC_VOXELS
 
 
@@ -464,17 +479,20 @@ float3 main(VSOutput vsOutput) : SV_Target0
     //visCone = visCone * 0.5 + 0.5;
     //indirectLight = lerp(visCone, indirectLight, 1e-4);
 
-
 #if VCT_APPLY_SSAO_TO_INDIRECT
         float ao = texSSAO[pixelPos];
         indirectLight *= ao;
 #endif // VCT_APPLY_SSAO_TO_INDIRECT
+
         if (DisplayIndirect)
         {
             colorSum += indirectLight;
         }
 #endif // VCT_APPLY_INDIRECT_LIGHT
 
+#if VCT_OCCLUSION_MODE
+        colorSum = outVisibility;
+#endif
 
 #if VCT_APPLY_INDIRECT_LIGHT_SPECULAR
         {

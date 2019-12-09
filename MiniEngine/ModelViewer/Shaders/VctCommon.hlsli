@@ -3,7 +3,11 @@
 
 // Anisotropic swtich must match define in VoxelConeTracing.h
 #define VCT_USE_ANISOTROPIC_VOXELS              0
+
 #define VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI    0
+
+#define VCT_OCCLUSION_MODE                      0
+#define VCT_OCCLUSION_MODE_SAO                  0
 
 #if VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI
     #define CONE_WEIGHT_UP      (5.0/20.0)
@@ -41,6 +45,11 @@ float3 TraceCone(
     float3 voxelPos,
     float3 voxelStep,
     float normalizedConeDiameter
+#if VCT_OCCLUSION_MODE
+    , float3 normal,
+    float3 worldScale,
+    out float outObscurance
+#endif
 )
 {
     // I think voxelSample.w (alpha/opacity) is already factored into
@@ -62,6 +71,11 @@ float3 TraceCone(
     float coneStep       = 2.0;
     float3 indirectLight = float3(0.0, 0.0, 0.0);
 
+#if VCT_OCCLUSION_MODE
+    float coneAO = 0.0;
+    float openDist = 0.0;
+#endif
+
     for (uint i = 0; (i < CONE_STEPS) && (transmitted > 0.0); ++i)
     {
         // Sample from cone and accumulate indirect light
@@ -72,6 +86,38 @@ float3 TraceCone(
         );
         indirectLight += voxelSample.xyz * transmitted;
 
+#if VCT_OCCLUSION_MODE
+
+#if VCT_OCCLUSION_MODE_SAO
+        // Occlusion like SAO
+        // https://research.nvidia.com/publication/scalable-ambient-obscurance
+        float3 v = (coneStep * voxelStep) * worldScale;
+        float vv = dot(v, v);
+        float vn = dot(v, normal);
+        float BIAS = 1e-2;
+        float EPSILON = 1e-2;
+        float RADIUS = 1000.0;
+        float RADIUS2 = (RADIUS*RADIUS);
+        float f = (max(RADIUS2 - vv, 0.0));
+        float ao = f * f * f * max((vn - BIAS) / (EPSILON + vv), 0.0);
+
+        // ao diminished by estimated non-opaque surface
+        // but no longer affect by objects more distant 
+        // than full blocker. if occlusion can't be transmitted,
+        // presume we're already AO'?
+        ao = saturate(ao);
+        ao *= voxelSample.w;
+
+        coneAO += ao * transmitted;
+#else
+        // very simple approximation of occlusion, if cone trace hits
+        // a voxel with non-zero opacity, it's partially occluded.
+        float distStep = (1.0/CONE_STEPS) * saturate(1.0 - voxelSample.w);
+        openDist += distStep * transmitted;
+#endif // VCT_OCCLUSION_MODE_SAO
+
+#endif // VCT_OCCLUSION_MODE
+
         // Update opacity and transmission from previous sample
         opacity += voxelSample.w * transmitted;
         transmitted = saturate(1.0 - opacity);
@@ -79,6 +125,14 @@ float3 TraceCone(
         // Step along cone
         coneStep = 2.0 * coneStep;
     }
+
+#if VCT_OCCLUSION_MODE
+#if VCT_OCCLUSION_MODE_SAO
+    outObscurance = coneAO;
+#else
+    outObscurance = 1.0 - (openDist / CONE_STEPS);
+#endif // VCT_OCCLUSION_MODE_SAO
+#endif // VCT_OCCLUSION_MODE
 
     return indirectLight;
 }
@@ -188,30 +242,82 @@ float3 ApplyIndirectLight(
     in SamplerState voxelSmp,
     float3 voxelPos,
     float3 voxelStep
+#if VCT_OCCLUSION_MODE
+    , float3 worldScale,
+    out float outVisibility
+#endif
 )
 {
+#if VCT_OCCLUSION_MODE
+    float coneObscurance = 0.0;
+    float aoSum = 0.0;
+    float3 normal = normalize(voxelStep);
+#endif // VCT_OCCLUSION_MODE
+
     // 1.154701 is diameter of base of 60 degree cone with height 1.0
     // take tan of half angle, double it. tan(60/2) ~= 0.577350.
     float3 coneDir = normalize(mul(CONE_DIR_1, tbn)) * (1.0/128.0);
-    float3 indirectSum = TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+    float3 indirectSum = TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701
+#if VCT_OCCLUSION_MODE
+        , normal, worldScale, coneObscurance);
+    aoSum += coneObscurance;
+#else
+    );
+#endif
 
     coneDir = normalize(mul(CONE_DIR_2, tbn)) * (1.0/128.0);
-    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701
+#if VCT_OCCLUSION_MODE
+        , normal, worldScale, coneObscurance);
+    aoSum += coneObscurance;
+#else
+    );
+#endif
 
     coneDir = normalize(mul(CONE_DIR_3, tbn)) * (1.0/128.0);
-    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701
+#if VCT_OCCLUSION_MODE
+        , normal, worldScale, coneObscurance);
+    aoSum += coneObscurance;
+#else
+    );
+#endif
 
     coneDir = normalize(mul(CONE_DIR_4, tbn)) * (1.0/128.0);
-    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701
+#if VCT_OCCLUSION_MODE
+        , normal, worldScale, coneObscurance);
+    aoSum += coneObscurance;
+#else
+    );
+#endif
 
     coneDir = normalize(mul(CONE_DIR_5, tbn)) * (1.0/128.0);
-    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701
+#if VCT_OCCLUSION_MODE
+        , normal, worldScale, coneObscurance);
+    aoSum += coneObscurance;
+#else
+    );
+#endif
 
     // all non-up facing cones have same weighting
     indirectSum *= CONE_WEIGHT_SIDE;
 
     coneDir = normalize(mul(CONE_DIR_0, tbn)) * (1.0/128.0);
-    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701);
+    indirectSum += TraceCone(voxelTex, voxelSmp, voxelPos, coneDir, 1.154701
+#if VCT_OCCLUSION_MODE
+        , normal, worldScale, coneObscurance);
+    aoSum += coneObscurance;
+#else
+    );
+#endif
+
+#if VCT_OCCLUSION_MODE
+    aoSum = (aoSum/6.0);
+    aoSum = (aoSum*aoSum);
+    outVisibility = saturate(1.0 - aoSum);
+#endif
 
     return (indirectSum * diffuseAlbedo) * VOXEL_UNPACK_SCALE;
 }
