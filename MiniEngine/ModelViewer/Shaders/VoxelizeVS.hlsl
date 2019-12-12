@@ -18,8 +18,14 @@ cbuffer VSConstants : register(b0)
 {
     float4x4 modelToProjection;
     float4x4 modelToShadow;
+
+    float4 VctWorldMin;
+    float4 VctWorldSpanInverse;
+
     float3 ViewerPos;
 };
+#define kWorldMin       (VctWorldMin.xyz)
+#define kInvWorldSpan   (VctWorldSpanInverse.xyz)
 
 struct VSInput
 {
@@ -47,9 +53,7 @@ VSOutput main(VSInput vsInput)
 {
     VSOutput vsOutput;
 
-    float3 worldMin = float3(-1920.94592, -126.442497, -1182.80713);
-    float3 worldMax = float3(1799.90808, 1429.43323, 1105.42603);
-    float3 normalizedWorld = (vsInput.position - worldMin) / (worldMax-worldMin);
+    float3 normalizedWorld = (vsInput.position - kWorldMin) * kInvWorldSpan;
 
     vsOutput.position = float4(normalizedWorld, 1.0);
     vsOutput.worldPos = vsInput.position;

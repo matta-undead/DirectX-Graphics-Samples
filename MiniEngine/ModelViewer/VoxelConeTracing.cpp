@@ -22,11 +22,13 @@ namespace VoxelConeTracing
     ColorBuffer s_VoxelBuffer;
 
 #if VCT_USE_ANISOTROPIC_VOXELS
-    const uint32_t kVoxelMipsCount = 6;
+    constexpr uint32_t kVoxelMipsCount = 6;
 #else
-    const uint32_t kVoxelMipsCount = 1;
+    constexpr uint32_t kVoxelMipsCount = 1;
 #endif
-    ColorBuffer s_VoxelMips[kVoxelMipsCount];
+    constexpr uint32_t kVoxelMipsFrameCount = 2;
+    ColorBuffer s_VoxelMips[kVoxelMipsCount * kVoxelMipsFrameCount];
+    uint32_t s_VoxelMipsCurrent = 0;
 
     RootSignature s_GenerateMipsRS;
     ComputePSO s_VctDownsamplePSO;
@@ -62,6 +64,16 @@ void VoxelConeTracing::Initialize( void )
     for (uint32_t i = 0; i < kVoxelMipsCount; ++i)
     {
         s_VoxelMips[i].Create3D( L"Voxel Mips", filteredDims, filteredDims, filteredDims, 0, DXGI_FORMAT_R8G8B8A8_UNORM );
+        if constexpr (kVoxelMipsFrameCount > 1) {
+            s_VoxelMips[i + kVoxelMipsCount].Create3D(
+                L"Voxel Mips Alt",
+                filteredDims,
+                filteredDims,
+                filteredDims,
+                0,
+                DXGI_FORMAT_R8G8B8A8_UNORM
+            );
+        }
     }
 }
 
@@ -69,7 +81,7 @@ void VoxelConeTracing::Shutdown( void )
 {
     s_VoxelBuffer.Destroy();
 
-    for (uint32_t i = 0; i < kVoxelMipsCount; ++i)
+    for (uint32_t i = 0; i < (kVoxelMipsCount * kVoxelMipsFrameCount); ++i)
     {
         s_VoxelMips[i].Destroy();
     }
@@ -77,13 +89,19 @@ void VoxelConeTracing::Shutdown( void )
 
 ColorBuffer& VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType type, uint32_t idx)
 {
+    uint32_t frameOffsetCurrent = s_VoxelMipsCurrent * kVoxelMipsCount;
+    uint32_t frameOffsetPrevious = (1-s_VoxelMipsCurrent) * kVoxelMipsCount;
+
     switch (type)
     {
     case VoxelConeTracing::BufferType::InitialVoxelization:
         return s_VoxelBuffer;
 
     case VoxelConeTracing::BufferType::FilteredVoxels:
-        return s_VoxelMips[idx];
+        return s_VoxelMips[idx + frameOffsetCurrent];
+
+    case VoxelConeTracing::BufferType::FilteredVoxelsPrevious:
+        return s_VoxelMips[idx + frameOffsetPrevious];
 
     default:
         ASSERT(false, "Invalid voxel buffer type or cases need updating.");
@@ -103,6 +121,7 @@ uint32_t VoxelConeTracing::GetVoxelBufferDims(VoxelConeTracing::BufferType type)
         return kVoxelDims;
 
     case BufferType::FilteredVoxels:
+    case BufferType::FilteredVoxelsPrevious:
         return (kVoxelDims / 2);
 
     default:
@@ -116,6 +135,9 @@ void VoxelConeTracing::DownsampleVoxelBuffer( CommandContext& BaseContext )
 {
     ComputeContext& Context = BaseContext.GetComputeContext();
 
+    uint32_t frameOffsetCurrent = s_VoxelMipsCurrent * kVoxelMipsCount;
+    uint32_t frameOffsetPrevious = (1-s_VoxelMipsCurrent) * kVoxelMipsCount;
+
     {
         ScopedTimer _prof(L"Vct Downsample Voxel Buffer", BaseContext);
 
@@ -126,13 +148,13 @@ void VoxelConeTracing::DownsampleVoxelBuffer( CommandContext& BaseContext )
         Context.SetPipelineState(s_VctDownsampleConvertPSO);
         D3D12_CPU_DESCRIPTOR_HANDLE buffers[] = {
             s_VoxelBuffer.GetUAV(),
-            s_VoxelMips[0].GetUAV()
+            s_VoxelMips[0 + frameOffsetCurrent].GetUAV()
 #if VCT_USE_ANISOTROPIC_VOXELS
-            , s_VoxelMips[1].GetUAV(),
-            s_VoxelMips[2].GetUAV(),
-            s_VoxelMips[3].GetUAV(),
-            s_VoxelMips[4].GetUAV(),
-            s_VoxelMips[5].GetUAV()
+            , s_VoxelMips[1 + frameOffsetCurrent].GetUAV(),
+            s_VoxelMips[2 + frameOffsetCurrent].GetUAV(),
+            s_VoxelMips[3 + frameOffsetCurrent].GetUAV(),
+            s_VoxelMips[4 + frameOffsetCurrent].GetUAV(),
+            s_VoxelMips[5 + frameOffsetCurrent].GetUAV()
 #endif
         };
         Context.SetDynamicDescriptors(1, 0, kVoxelMipsCount + 1, buffers);
@@ -159,10 +181,10 @@ void VoxelConeTracing::DownsampleVoxelBuffer( CommandContext& BaseContext )
                 Context.SetConstants(0, sourceMip, numMips);
 
                 D3D12_CPU_DESCRIPTOR_HANDLE mips[] = {
-                    s_VoxelMips[i].GetUAV(sourceMip + 0),
-                    s_VoxelMips[i].GetUAV(sourceMip + 1),
-                    s_VoxelMips[i].GetUAV(sourceMip + 2),
-                    s_VoxelMips[i].GetUAV(sourceMip + 3),
+                    s_VoxelMips[i + frameOffsetCurrent].GetUAV(sourceMip + 0),
+                    s_VoxelMips[i + frameOffsetCurrent].GetUAV(sourceMip + 1),
+                    s_VoxelMips[i + frameOffsetCurrent].GetUAV(sourceMip + 2),
+                    s_VoxelMips[i + frameOffsetCurrent].GetUAV(sourceMip + 3),
                 };
                 Context.SetDynamicDescriptors(1, 0, 4, mips);
                 const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels) / 2;
@@ -177,10 +199,10 @@ void VoxelConeTracing::DownsampleVoxelBuffer( CommandContext& BaseContext )
                 Context.SetConstants(0, sourceMip, numMips);
 
                 D3D12_CPU_DESCRIPTOR_HANDLE mips[] = {
-                    s_VoxelMips[i].GetUAV(sourceMip + 0),
-                    s_VoxelMips[i].GetUAV(sourceMip + 1),
-                    s_VoxelMips[i].GetUAV(sourceMip + 2),
-                    s_VoxelMips[i].GetUAV(sourceMip + 3),
+                    s_VoxelMips[i + frameOffsetCurrent].GetUAV(sourceMip + 0),
+                    s_VoxelMips[i + frameOffsetCurrent].GetUAV(sourceMip + 1),
+                    s_VoxelMips[i + frameOffsetCurrent].GetUAV(sourceMip + 2),
+                    s_VoxelMips[i + frameOffsetCurrent].GetUAV(sourceMip + 3),
                 };
                 Context.SetDynamicDescriptors(1, 0, 4, mips);
                 const uint32_t dims = GetVoxelBufferDims(BufferType::FilteredVoxels) / 16;
@@ -192,3 +214,7 @@ void VoxelConeTracing::DownsampleVoxelBuffer( CommandContext& BaseContext )
     }
 }
 
+void VoxelConeTracing::SwapCurrentVoxelBuffer ()
+{
+    s_VoxelMipsCurrent = 1 - s_VoxelMipsCurrent;
+}

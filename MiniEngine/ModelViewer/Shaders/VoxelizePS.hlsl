@@ -9,9 +9,10 @@
 // these are looking wrong right now
 #define APPLY_NON_DIRECTIONAL_LIGHTS            0
 // sample previous frame's indirect light
-#define VCT_APPLY_INDIRECT_LIGHT                0
+#define VCT_APPLY_INDIRECT_LIGHT                1
 // colorize secondary bounce
-#define VCT_APPLY_DEBUG_TINT_TO_INDIRECT_LIGHT  1
+#define VCT_APPLY_DEBUG_TINT_TO_INDIRECT_LIGHT  0
+
 
 
 #include "ModelViewerRS.hlsli"
@@ -142,10 +143,20 @@ cbuffer PSConstants : register(b0)
     float3 AmbientColor;
     float4 ShadowTexelSize;
 
+    float4 VctWorldMin;
+    float4 VctWorldSpanInverse;
+
+    float4 VctSpotPosRad;
+    float4 VctSpotDir;
+    float4 VctSpotColor;
+    float4 VctSpotAngles;
+
     float4 InvTileDim;
     uint4 TileCount;
     uint4 FirstLightIndex;
 }
+#define kWorldMin       (VctWorldMin.xyz)
+#define kInvWorldSpan   (VctWorldSpanInverse.xyz)
 
 SamplerState sampler0 : register(s0);
 SamplerComparisonState shadowSampler : register(s1);
@@ -425,6 +436,9 @@ void main(GSOutput vsOutput)
     uint2 pixelPos = vsOutput.position.xy;
 
     float3 diffuseAlbedo = texDiffuse.Sample(sampler0, vsOutput.uv);
+#if VCT_PLACEHOLDER_DIFFUSE
+    diffuseAlbedo = float3(0.18, 0.18, 0.18);
+#endif
 
     float3 colorSum = 0;
 #if APPLY_AMBIENT_LIGHT
@@ -457,28 +471,51 @@ void main(GSOutput vsOutput)
     colorSum += ApplyDirectionalLight( diffuseAlbedo, specularAlbedo, specularMask, gloss, normalize(vsOutput.normal), viewDir, SunDirection, SunColor, vsOutput.shadowCoord );
 #endif // APPLY_DIRECTIONAL_LIGHT
 
+    colorSum += ApplyConeLight(
+        diffuseAlbedo,
+        specularAlbedo,
+        specularMask,
+        gloss,
+        normal,
+        viewDir,
+        vsOutput.worldPos,
+        VctSpotPosRad.xyz,
+        VctSpotPosRad.w,
+        VctSpotColor.xyz,
+        VctSpotDir.xyz,
+        VctSpotAngles.xy
+    );
+
 
 #if VCT_APPLY_INDIRECT_LIGHT
     {
-        // this is terrible, but i'm having trouble getting started.
-        // so anything to make progress forward.
-        float3 worldMin = float3(-1920.94592, -126.442497, -1182.80713);
-        float3 worldMax = float3(1799.90808, 1429.43323, 1105.42603);
-
         float3 worldPos = vsOutput.worldPos.xyz;
-        float3 voxelPos = (worldPos - worldMin) / (worldMax - worldMin);
+        float3 voxelPos = (worldPos - kWorldMin) * kInvWorldSpan;
 
         // high res voxel step size
-        float3 voxelStep = normalize(vsOutput.normal) * (1.0/128.0);
-        // step away from surface to avoid self lighting
-        voxelPos += voxelStep;
+        float3 geomNormal = normalize(vsOutput.normal);
+        float3 voxelNormal = geomNormal * kInvWorldSpan;
+        float3 voxelStep = voxelNormal * (1.0/128.0);
 
-        float3 indirectLight = ApplyIndirectLight(diffuseAlbedo, tbn, texVoxel, sampler2, voxelPos, voxelStep);
+        // step away from surface to avoid self lighting
+        // division by magnitude of greatest component to set that
+        // component to 1. step 1 voxel away.
+        float3 absVN = abs(voxelNormal);
+        float maxVN = max(absVN.x, max(absVN.y, max(absVN.z, 1e-5)));
+        float3 voxelOffset = voxelNormal * (1.0 / maxVN) * (1.0/128.0);
+        voxelPos += voxelOffset;
+
+        // construct tangent frame from normal instead of provided tangent and bitangent.
+        // want consistent frame across surface instead of change at mirrored uv boundary
+        // and want to support eventually geometry that does not provide tangent or uvs.
+        float3x3 tanFrame = BuildTangentFrameFromNormal(geomNormal);
+
+        float3 indirectLight = ApplyIndirectLight(diffuseAlbedo, tanFrame, texVoxel, sampler2, voxelPos, voxelStep);
 #if VCT_APPLY_DEBUG_TINT_TO_INDIRECT_LIGHT
         float indirectAvg = dot(indirectLight, float3(0.33, 0.34, 0.33));
         indirectLight = float3(indirectAvg, 0.0, indirectAvg);
 #endif
-        colorSum += indirectLight;        
+        colorSum += indirectLight * 0.2;
     }
 #endif // VCT_APPLY_INDIRECT_LIGHT
 
@@ -805,11 +842,7 @@ void main(GSOutput vsOutput)
 #if 1
     // OR!
     float3 worldPos = vsOutput.worldPos.xyz;
-
-    float3 worldMin = float3(-1920.94592, -126.442497, -1182.80713);
-    float3 worldMax = float3(1799.90808, 1429.43323, 1105.42603);
-
-    float3 normalizedWorld = (worldPos - worldMin) / (worldMax-worldMin);
+    float3 normalizedWorld = (worldPos - kWorldMin) * kInvWorldSpan;
     normalizedWorld = saturate(normalizedWorld);
     normalizedWorld = normalizedWorld * 255.0;
     voxelPos = uint3(normalizedWorld);

@@ -81,10 +81,20 @@ cbuffer PSConstants : register(b0)
     float3 AmbientColor;
     float4 ShadowTexelSize;
 
+    float4 VctWorldMin;
+    float4 VctWorldSpanInverse;
+
+    float4 VctSpotPosRad;
+    float4 VctSpotDir;
+    float4 VctSpotColor;
+    float4 VctSpotAngles;
+
     float4 InvTileDim;
     uint4 TileCount;
     uint4 FirstLightIndex;
 }
+#define kWorldMin       (VctWorldMin.xyz)
+#define kInvWorldSpan   (VctWorldSpanInverse.xyz)
 
 // Root constants
 float2 VctParams0 : register(b1);
@@ -360,22 +370,14 @@ uint PullNextBit( inout uint bits )
     return bitIndex;
 }
 
-float3x3 BuildTangentFrameFromNormal(float3 normal)
-{
-    float3 t0 = cross(float3(0.0, 1.0, 0.0), normal);
-    float3 t1 = cross(float3(0.0, 0.0, 1.0), normal);
-    float3 tangent = normalize( (length(t0) < length(t1)) ? t1 : t0);
-    float3 bitangent = normalize(cross(tangent, normal));
-    tangent = normalize(cross(bitangent, normal));
-    return float3x3(tangent, bitangent, normal);
-}
-
-
 [RootSignature(ModelViewer_RootSig)]
 float3 main(VSOutput vsOutput) : SV_Target0
 {
     uint2 pixelPos = vsOutput.position.xy;
     float3 diffuseAlbedo = texDiffuse.Sample(sampler0, vsOutput.uv);
+#if VCT_PLACEHOLDER_DIFFUSE
+    diffuseAlbedo = float3(0.18, 0.18, 0.18);
+#endif
     float3 colorSum = 0;
 #if VCT_APPLY_AMBIENT_LIGHT
     {
@@ -388,6 +390,9 @@ float3 main(VSOutput vsOutput) : SV_Target0
     float3 normal;
     //{
         normal = texNormal.Sample(sampler0, vsOutput.uv) * 2.0 - 1.0;
+#if VCT_PLACEHOLDER_DIFFUSE
+        normal = float3(0.0, 0.0, 1.0);
+#endif
         AntiAliasSpecular(normal, gloss);
         float3x3 tbn = float3x3(normalize(vsOutput.tangent), normalize(vsOutput.bitangent), normalize(vsOutput.normal));
         normal = normalize(mul(normal, tbn));
@@ -412,25 +417,40 @@ float3 main(VSOutput vsOutput) : SV_Target0
     }
 #endif // VCT_APPLY_DIRECTIONAL_LIGHT
 
-    {
-        // this is terrible, but i'm having trouble getting started.
-        // so anything to make progress forward.
-        float3 worldMin = float3(-1920.94592, -126.442497, -1182.80713);
-        float3 worldMax = float3(1799.90808, 1429.43323, 1105.42603);
 
+
+    colorSum += ApplyConeLight(
+        diffuseAlbedo,
+        float3(0,0,0), // specularAlbedo,
+        specularMask,
+        gloss,
+        normal,
+        viewDir,
+        vsOutput.worldPos,
+        VctSpotPosRad.xyz,
+        VctSpotPosRad.w,
+        VctSpotColor.xyz,
+        VctSpotDir.xyz,
+        VctSpotAngles.xy
+    ) * 0.5f;
+
+
+
+    {
         float3 worldPos = vsOutput.worldPos.xyz;
-        float3 voxelPos = (worldPos - worldMin) / (worldMax - worldMin);
+        float3 voxelPos = (worldPos - kWorldMin) * kInvWorldSpan;
 
         // high res voxel step size
         float3 geomNormal = normalize(vsOutput.normal);
-        float3 voxelStep = geomNormal * (1.0/128.0);
+        float3 voxelNormal = geomNormal * kInvWorldSpan;
+        float3 voxelStep = voxelNormal * (1.0/128.0);
 
         // step away from surface to avoid self lighting
         // division by magnitude of greatest component to set that
         // component to 1. step 1 voxel away.
-        float3 absGN = abs(geomNormal);
-        float maxGN = max(absGN.x, max(absGN.y, max(absGN.z, 1e-4)));
-        float3 voxelOffset = geomNormal * (1.0 / maxGN) * (1.0/128.0);
+        float3 absVN = abs(voxelNormal);
+        float maxVN = max(absVN.x, max(absVN.y, max(absVN.z, 1e-5)));
+        float3 voxelOffset = voxelNormal * (1.0 / maxVN) * (1.0/128.0);
         voxelPos += voxelOffset;
 
         // construct tangent frame from normal instead of provided tangent and bitangent.
@@ -467,17 +487,19 @@ float3 main(VSOutput vsOutput) : SV_Target0
             voxelPos,
             voxelStep
 #if VCT_OCCLUSION_MODE
-            , (worldMax - worldMin), // worldScale
+            , (1.0 / kInvWorldSpan), // worldScale
             outVisibility
 #endif // VCT_OCCLUSION_MODE
         );
     #endif // VCT_USE_ANISOTROPIC_VOXELS
 
 
+#if 0
     // Debug visualize cone directions
-    //float3 visCone = normalize(mul(CONE_DIR_2, tanFrame));
-    //visCone = visCone * 0.5 + 0.5;
-    //indirectLight = lerp(visCone, indirectLight, 1e-4);
+    float3 visCone = normalize(mul(CONE_DIR_0, tanFrame));
+    visCone = visCone * 0.5 + 0.5;
+    indirectLight = lerp(visCone, indirectLight, 1e-4);
+#endif
 
 #if VCT_APPLY_SSAO_TO_INDIRECT
         float ao = texSSAO[pixelPos];

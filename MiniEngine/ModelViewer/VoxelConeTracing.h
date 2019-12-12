@@ -17,7 +17,8 @@ namespace VoxelConeTracing
 
     enum class BufferType {
         InitialVoxelization,
-        FilteredVoxels
+        FilteredVoxels,
+        FilteredVoxelsPrevious
     };
 
     ColorBuffer& GetVoxelBuffer (BufferType type, uint32_t idx = 0);
@@ -25,4 +26,6 @@ namespace VoxelConeTracing
     uint32_t GetVoxelBufferDims (BufferType type);
 
     void DownsampleVoxelBuffer( CommandContext& BaseContext );
+
+    void SwapCurrentVoxelBuffer ();
 }

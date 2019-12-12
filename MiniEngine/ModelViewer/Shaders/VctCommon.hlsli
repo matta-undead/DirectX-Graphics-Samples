@@ -9,6 +9,8 @@
 #define VCT_OCCLUSION_MODE                      0
 #define VCT_OCCLUSION_MODE_SAO                  0
 
+#define VCT_PLACEHOLDER_DIFFUSE                 1
+
 #if VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI
     #define CONE_WEIGHT_UP      (5.0/20.0)
     #define CONE_WEIGHT_SIDE    (3.0/20.0)
@@ -17,12 +19,17 @@
     #define CONE_WEIGHT_SIDE    ((3.0*3.14159)/20.0)
 #endif
 
+// one cone pointed up, five cones angled 30 degrees up
+// and rotated around a circle every 72 degrees, starting
+// at 9 degrees so none end up pointing exactly up or to
+// the side. might rotate them eventually so that doesn't
+// seem like something to worry too much about.
 #define CONE_DIR_0      float3(0.0, 0.0, 1.0)
-#define CONE_DIR_1      float3(0.0, 0.866025, 0.5)
-#define CONE_DIR_2      float3(0.823639, 0.267617, 0.5)
-#define CONE_DIR_3      float3(0.509037, -0.700629, 0.5)
-#define CONE_DIR_4      float3(-0.509037, -0.700629, 0.5)
-#define CONE_DIR_5      float3(-0.823639, 0.267617, 0.5)
+#define CONE_DIR_1      float3( 0.855363,  0.135476, 0.5)//float3(0.0, 0.866025, 0.5)
+#define CONE_DIR_2      float3( 0.135476,  0.855363, 0.5)//float3(0.823639, 0.267617, 0.5)
+#define CONE_DIR_3      float3(-0.771634,  0.393167, 0.5)//float3(0.509037, -0.700629, 0.5)
+#define CONE_DIR_4      float3(-0.612372, -0.612372, 0.5)//float3(-0.509037, -0.700629, 0.5)
+#define CONE_DIR_5      float3( 0.393167, -0.771634, 0.5)//float3(-0.823639, 0.267617, 0.5)
 
 // Taking a fifth sample, at least with current doubling step sizes
 // introduces an almost global ambient value thanks to light bleed.
@@ -38,6 +45,16 @@
 
 
 // shared functions
+
+float3x3 BuildTangentFrameFromNormal(float3 normal)
+{
+    float3 t0 = cross(float3(0.0, 1.0, 0.0), normal);
+    float3 t1 = cross(float3(0.0, 0.0, 1.0), normal);
+    float3 tangent = normalize( (length(t0) < length(t1)) ? t1 : t0);
+    float3 bitangent = normalize(cross(tangent, normal));
+    tangent = normalize(cross(bitangent, normal));
+    return float3x3(tangent, bitangent, normal);
+}
 
 float3 TraceCone(
     in Texture3D<float4> voxelTex,

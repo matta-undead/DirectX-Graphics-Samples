@@ -148,6 +148,7 @@ BoolVar EnableWaveOps("Application/Forward+/Enable Wave Ops", true);
 
 BoolVar DisplaySun("Application/VCT/Display Sun", true);
 BoolVar DisplayIndirect("Application/VCT/Display Indirect", true);
+BoolVar DisplayFlashlight("Application/VCT/Display Flashlight", false);
 BoolVar ShowVoxels("Application/VCT/Show Voxels", false);
 BoolVar AnimateSun("Application/VCT/Animate Sun", true);
 
@@ -484,11 +485,29 @@ void ModelViewer::RenderObjects( GraphicsContext& gfxContext, const Matrix4& Vie
     {
         Matrix4 modelToProjection;
         Matrix4 modelToShadow;
+
+        // add world dims to psConstants
+        float VctWorldMin[4];
+        float VctWorldSpanInverse[4]; // 1 / (max-min
+
         XMFLOAT3 viewerPos;
     } vsConstants;
     vsConstants.modelToProjection = ViewProjMat;
     vsConstants.modelToShadow = m_SunShadow.GetShadowMatrix();
     XMStoreFloat3(&vsConstants.viewerPos, m_Camera.GetPosition());
+
+    {
+        const Math::Vector3 & worldMin = m_Model.GetBoundingBox().min;
+        const Math::Vector3 worldSpan = m_Model.GetBoundingBox().max - worldMin;
+        vsConstants.VctWorldMin[0] = worldMin.GetX();
+        vsConstants.VctWorldMin[1] = worldMin.GetY();
+        vsConstants.VctWorldMin[2] = worldMin.GetZ();
+        vsConstants.VctWorldMin[3] = 0.0f;
+        vsConstants.VctWorldSpanInverse[0] = 1.0f / worldSpan.GetX();
+        vsConstants.VctWorldSpanInverse[1] = 1.0f / worldSpan.GetY();
+        vsConstants.VctWorldSpanInverse[2] = 1.0f / worldSpan.GetZ();
+        vsConstants.VctWorldSpanInverse[3] = 0.0f;
+    }
 
     gfxContext.SetDynamicConstantBufferView(0, sizeof(vsConstants), &vsConstants);
 
@@ -593,6 +612,16 @@ void ModelViewer::RenderScene( void )
         Vector3 ambientLight;
         float ShadowTexelSize[4];
 
+        // add world dims to psConstants
+        float VctWorldMin[4];
+        float VctWorldSpanInverse[4]; // 1 / (max-min)
+
+        // add spot light to psConstants
+        float VctSpotPosRad[4];
+        float VctSpotDir[4];
+        float VctSpotColor[4];
+        float VctSpotAngles[4];
+
         float InvTileDim[4];
         uint32_t TileCount[4];
         uint32_t FirstLightIndex[4];
@@ -610,6 +639,51 @@ void ModelViewer::RenderScene( void )
     psConstants.FirstLightIndex[0] = Lighting::m_FirstConeLight;
     psConstants.FirstLightIndex[1] = Lighting::m_FirstConeShadowedLight;
     psConstants.FrameIndexMod2 = FrameIndex;
+
+    // add world dims and spot light to psConstants
+    {
+        const Math::Vector3 & worldMin = m_Model.GetBoundingBox().min;
+        const Math::Vector3 worldSpan = m_Model.GetBoundingBox().max - worldMin;
+        psConstants.VctWorldMin[0] = worldMin.GetX();
+        psConstants.VctWorldMin[1] = worldMin.GetY();
+        psConstants.VctWorldMin[2] = worldMin.GetZ();
+        psConstants.VctWorldMin[3] = 0.0f;
+        psConstants.VctWorldSpanInverse[0] = 1.0f / worldSpan.GetX();
+        psConstants.VctWorldSpanInverse[1] = 1.0f / worldSpan.GetY();
+        psConstants.VctWorldSpanInverse[2] = 1.0f / worldSpan.GetZ();
+        psConstants.VctWorldSpanInverse[3] = 0.0f;
+
+        const Math::Vector3 camPos = m_Camera.GetPosition();
+        const Math::Vector3 camUp = m_Camera.GetUpVec();
+        const Math::Vector3 camForward = m_Camera.GetForwardVec();
+
+        const Math::Vector3 spotPos = camPos + (-50.0f * camUp);
+        const Math::Vector3 spotTar = spotPos + (100.0f * camForward) + (-20.0f * camUp);
+        const Math::Vector3 spotDir = Math::Normalize(spotTar - spotPos);
+
+        const float PI = 3.1415926f;
+        const float coneInner = 0.2f * 0.1f * PI;
+        const float coneOuter = 0.4f * 0.2f * PI;
+
+        float spotLen = 20.0f * 100.0f;
+
+        psConstants.VctSpotPosRad[0] = spotPos.GetX();
+        psConstants.VctSpotPosRad[1] = spotPos.GetY();
+        psConstants.VctSpotPosRad[2] = spotPos.GetZ();
+        psConstants.VctSpotPosRad[3] = spotLen * spotLen;
+        psConstants.VctSpotDir[0] = spotDir.GetX();
+        psConstants.VctSpotDir[1] = spotDir.GetY();
+        psConstants.VctSpotDir[2] = spotDir.GetZ();
+        psConstants.VctSpotDir[3] = 0.0f;
+        psConstants.VctSpotColor[0] = DisplayFlashlight ? 0.9f  : 0.0f;
+        psConstants.VctSpotColor[1] = DisplayFlashlight ? 0.95f : 0.0f;
+        psConstants.VctSpotColor[2] = DisplayFlashlight ? 0.75f : 0.0f;
+        psConstants.VctSpotColor[3] = 1.0f;
+        psConstants.VctSpotAngles[0] = 1.0f / (cosf(coneInner) - cosf(coneOuter));
+        psConstants.VctSpotAngles[1] = cosf(coneOuter);
+        psConstants.VctSpotAngles[2] = 0.0f;
+        psConstants.VctSpotAngles[3] = 0.0f;
+    }
 
     // Set the default state for command lists
     auto pfnSetupGraphicsState = [&](void)
@@ -692,7 +766,7 @@ void ModelViewer::RenderScene( void )
 
             // Should have a better way of clearing this on initialization.
             static bool first = true;
-            ColorBuffer & voxelMips = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels);
+            ColorBuffer & voxelMips = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxelsPrevious);
             if (first)
             {
                 gfxContext.TransitionResource(voxelMips, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
@@ -706,6 +780,24 @@ void ModelViewer::RenderScene( void )
 
             // disable all framebuffer options, depth write, depth test, color writes
             // set viewport resolution equal to voxel grid dimensions
+
+            // bind previous frame's vct result as input to this one during voxelization
+            {
+                m_ExtraTextures[6] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxelsPrevious).GetSRV();
+                #if VCT_USE_ANISOTROPIC_VOXELS
+                    m_ExtraTextures[7] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxelsPrevious, 1).GetSRV();
+                    m_ExtraTextures[8] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxelsPrevious, 2).GetSRV();
+                    m_ExtraTextures[9] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxelsPrevious, 3).GetSRV();
+                    m_ExtraTextures[10] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxelsPrevious, 4).GetSRV();
+                    m_ExtraTextures[11] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxelsPrevious, 5).GetSRV();
+                #else
+                    m_ExtraTextures[7] = m_ExtraTextures[6];
+                    m_ExtraTextures[8] = m_ExtraTextures[6];
+                    m_ExtraTextures[9] = m_ExtraTextures[6];
+                    m_ExtraTextures[10] = m_ExtraTextures[6];
+                    m_ExtraTextures[11] = m_ExtraTextures[6];
+                #endif // VCT_USE_ANISOTROPIC_VOXELS
+            }
 
             gfxContext.SetDynamicDescriptors(3, 0, _countof(m_ExtraTextures), m_ExtraTextures);
             gfxContext.SetDynamicConstantBufferView(1, sizeof(psConstants), &psConstants);
@@ -731,6 +823,24 @@ void ModelViewer::RenderScene( void )
             ScopedTimer _prof4(L"Render Color", gfxContext);
 
             gfxContext.TransitionResource(g_SSAOFullScreen, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+            // bind current frame's vct result as input to this one during lighting
+            {
+                m_ExtraTextures[6] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels).GetSRV();
+                #if VCT_USE_ANISOTROPIC_VOXELS
+                    m_ExtraTextures[7] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, 1).GetSRV();
+                    m_ExtraTextures[8] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, 2).GetSRV();
+                    m_ExtraTextures[9] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, 3).GetSRV();
+                    m_ExtraTextures[10] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, 4).GetSRV();
+                    m_ExtraTextures[11] = VoxelConeTracing::GetVoxelBuffer(VoxelConeTracing::BufferType::FilteredVoxels, 5).GetSRV();
+                #else
+                    m_ExtraTextures[7] = m_ExtraTextures[6];
+                    m_ExtraTextures[8] = m_ExtraTextures[6];
+                    m_ExtraTextures[9] = m_ExtraTextures[6];
+                    m_ExtraTextures[10] = m_ExtraTextures[6];
+                    m_ExtraTextures[11] = m_ExtraTextures[6];
+                #endif // VCT_USE_ANISOTROPIC_VOXELS
+            }
 
             gfxContext.SetDynamicDescriptors(3, 0, _countof(m_ExtraTextures), m_ExtraTextures);
             gfxContext.SetDynamicConstantBufferView(1, sizeof(psConstants), &psConstants);
@@ -760,6 +870,8 @@ void ModelViewer::RenderScene( void )
                 RenderObjects( gfxContext, m_ViewProjMatrix, kCutout );
             }
         }
+
+        VoxelConeTracing::SwapCurrentVoxelBuffer();
     }
 
     // Some systems generate a per-pixel velocity buffer to better track dynamic and skinned meshes.  Everything
