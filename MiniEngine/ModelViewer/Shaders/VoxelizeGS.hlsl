@@ -45,6 +45,18 @@ void GSOutputFromVS(in VSOutput vso, inout GSOutput gso)
 [maxvertexcount(3)]
 void main(triangle VSOutput vsOutput[3], inout TriangleStream<GSOutput> triStream)
 {
+    // cull out-of-bounds triangles
+    float3 maxNormalizedPos = max(vsOutput[0].position.xyz, max(vsOutput[1].position.xyz, vsOutput[2].position.xyz));
+    if (all(maxNormalizedPos < 0.0))
+    {
+        return;
+    }
+    float3 minNormalizedPos = min(vsOutput[0].position.xyz, max(vsOutput[1].position.xyz, vsOutput[2].position.xyz));
+    if (all(minNormalizedPos > 1.0))
+    {
+        return;
+    }
+
     // dominant axis selection
     float3 v0 = normalize(vsOutput[1].worldPos - vsOutput[0].worldPos);
     float3 v1 = normalize(vsOutput[2].worldPos - vsOutput[0].worldPos);
@@ -71,6 +83,18 @@ void main(triangle VSOutput vsOutput[3], inout TriangleStream<GSOutput> triStrea
     {
     }
 
+    // cull axis-projected, out-of-bounds triangles
+    float2 aabbMin = min(vsOutput[0].position.xy, min(vsOutput[1].position.xy, vsOutput[2].position.xy));
+    float2 aabbMax = max(vsOutput[0].position.xy, max(vsOutput[1].position.xy, vsOutput[2].position.xy));
+    if (any(aabbMax < 0.0))
+    {
+        return;
+    }
+    if (any(aabbMin > 1.0))
+    {
+        return;
+    }
+
 #if USE_SMALL_TRIANGLE_CULLING
     // small triangle culling
     // Optimizing the Graphics Pipeline with Compute - Frostbite - GDC 2016
@@ -81,11 +105,10 @@ void main(triangle VSOutput vsOutput[3], inout TriangleStream<GSOutput> triStrea
     // from vertex shader and swizzle above, we have normalized output position
     // from (0, 1) in xy. scale by voxel dims (hardcoded here to 256 for now)
     // and round to get integer coords suitable for comparison.
-    float2 aabbMin = min(vsOutput[0].position.xy, min(vsOutput[1].position.xy, vsOutput[2].position.xy));
-    float2 aabbMax = max(vsOutput[0].position.xy, max(vsOutput[1].position.xy, vsOutput[2].position.xy));
     aabbMin = aabbMin * 256.0;
     aabbMax = aabbMax * 256.0;
-    if (any(round(aabbMin) == round(aabbMax))) {
+    if (any(round(aabbMin) == round(aabbMax)))
+    {
         return;
     }
 #endif

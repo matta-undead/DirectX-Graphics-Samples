@@ -32,6 +32,8 @@ namespace VoxelConeTracing
 
     RootSignature s_GenerateMipsRS;
     ComputePSO s_VctDownsamplePSO;
+
+    constexpr float kVoxelWorldSize = float(kVoxelDims * 8u);
 }
 
 void VoxelConeTracing::Initialize( void )
@@ -136,7 +138,6 @@ void VoxelConeTracing::DownsampleVoxelBuffer( CommandContext& BaseContext )
     ComputeContext& Context = BaseContext.GetComputeContext();
 
     uint32_t frameOffsetCurrent = s_VoxelMipsCurrent * kVoxelMipsCount;
-    uint32_t frameOffsetPrevious = (1-s_VoxelMipsCurrent) * kVoxelMipsCount;
 
     {
         ScopedTimer _prof(L"Vct Downsample Voxel Buffer", BaseContext);
@@ -217,4 +218,43 @@ void VoxelConeTracing::DownsampleVoxelBuffer( CommandContext& BaseContext )
 void VoxelConeTracing::SwapCurrentVoxelBuffer ()
 {
     s_VoxelMipsCurrent = 1 - s_VoxelMipsCurrent;
+}
+
+void VoxelConeTracing::GetVoxelWorldDims (
+    const Math::Vector3& position,
+    const Math::Vector3& boundsMin,
+    const Math::Vector3& boundsMax,
+    Math::Vector3 * voxelMin,
+    Math::Vector3 * voxelMax
+)
+{
+    if ((voxelMin == nullptr) || (voxelMax == nullptr))
+    {
+        return;
+    }
+
+    const Math::Vector3 boundsSpan = boundsMax - boundsMin;
+    const bool isEntirelyContained = boundsSpan.GetX() <= kVoxelWorldSize
+        && boundsSpan.GetY() <= kVoxelWorldSize
+        && boundsSpan.GetZ() <= kVoxelWorldSize;
+
+    if (isEntirelyContained)
+    {
+        *voxelMin = boundsMin;
+        *voxelMax = boundsMax;
+        return;
+    }
+
+    // quantize position to reduce voxels flicker
+    constexpr float quantizeToNVoxels = 16.0f;
+    const float voxelSizeInWorldUnits = (quantizeToNVoxels * kVoxelWorldSize) / float(kVoxelDims);
+    Math::Vector3 quantizedPosition = position * (1.0f/voxelSizeInWorldUnits);
+    quantizedPosition = Math::Round(quantizedPosition);
+    quantizedPosition = quantizedPosition * voxelSizeInWorldUnits;
+
+    const Math::Vector3 halfVoxelWorldVec(kVoxelWorldSize * 0.5f);
+
+    *voxelMin = quantizedPosition - halfVoxelWorldVec;
+    *voxelMax = quantizedPosition + halfVoxelWorldVec;
+
 }

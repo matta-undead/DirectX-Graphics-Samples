@@ -8,5 +8,5 @@ struct GSOutput
 //[RootSignature(ModelViewer_RootSig)]
 float3 main(GSOutput vsOutput) : SV_Target0
 {
-    return vsOutput.color.xyz;
+    return vsOutput.color.xyz + 0.01;
 }

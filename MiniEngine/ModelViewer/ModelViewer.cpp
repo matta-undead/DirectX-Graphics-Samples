@@ -497,8 +497,14 @@ void ModelViewer::RenderObjects( GraphicsContext& gfxContext, const Matrix4& Vie
     XMStoreFloat3(&vsConstants.viewerPos, m_Camera.GetPosition());
 
     {
-        const Math::Vector3 & worldMin = m_Model.GetBoundingBox().min;
-        const Math::Vector3 worldSpan = m_Model.GetBoundingBox().max - worldMin;
+        const Model::BoundingBox& bounds = m_Model.GetBoundingBox();
+        const Math::Vector3 camPos = m_Camera.GetPosition();
+
+        Math::Vector3 worldMin;
+        Math::Vector3 worldMax;
+        VoxelConeTracing::GetVoxelWorldDims(camPos, bounds.min, bounds.max, &worldMin, &worldMax);
+
+        const Math::Vector3 worldSpan = worldMax - worldMin;
         vsConstants.VctWorldMin[0] = worldMin.GetX();
         vsConstants.VctWorldMin[1] = worldMin.GetY();
         vsConstants.VctWorldMin[2] = worldMin.GetZ();
@@ -642,8 +648,14 @@ void ModelViewer::RenderScene( void )
 
     // add world dims and spot light to psConstants
     {
-        const Math::Vector3 & worldMin = m_Model.GetBoundingBox().min;
-        const Math::Vector3 worldSpan = m_Model.GetBoundingBox().max - worldMin;
+        const Model::BoundingBox& bounds = m_Model.GetBoundingBox();
+        const Math::Vector3 camPos = m_Camera.GetPosition();
+
+        Math::Vector3 worldMin;
+        Math::Vector3 worldMax;
+        VoxelConeTracing::GetVoxelWorldDims(camPos, bounds.min, bounds.max, &worldMin, &worldMax);
+
+        const Math::Vector3 worldSpan = worldMax - worldMin;
         psConstants.VctWorldMin[0] = worldMin.GetX();
         psConstants.VctWorldMin[1] = worldMin.GetY();
         psConstants.VctWorldMin[2] = worldMin.GetZ();
@@ -653,7 +665,6 @@ void ModelViewer::RenderScene( void )
         psConstants.VctWorldSpanInverse[2] = 1.0f / worldSpan.GetZ();
         psConstants.VctWorldSpanInverse[3] = 0.0f;
 
-        const Math::Vector3 camPos = m_Camera.GetPosition();
         const Math::Vector3 camUp = m_Camera.GetUpVec();
         const Math::Vector3 camForward = m_Camera.GetForwardVec();
 

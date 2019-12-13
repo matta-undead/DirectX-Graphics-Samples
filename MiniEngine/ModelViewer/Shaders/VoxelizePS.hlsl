@@ -6,6 +6,7 @@
 // toggle light types on and off
 #define APPLY_AMBIENT_LIGHT                     0
 #define APPLY_DIRECTIONAL_LIGHT                 1
+#define APPLY_FLASHLIGHT                        1
 // these are looking wrong right now
 #define APPLY_NON_DIRECTIONAL_LIGHTS            0
 // sample previous frame's indirect light
@@ -242,6 +243,18 @@ float3 ApplyLightCommon(
     return nDotL * lightColor * (diffuseColor + specularFactor * specularColor);
 }
 
+float3 ApplyLightSimple(
+    float3 diffuseColor,
+    float3 normal,
+    float3 lightDir,
+    float3 lightColor
+)
+{
+    float nDotL = saturate(dot(normal, lightDir));
+
+    return nDotL * lightColor * diffuseColor;
+}
+
 float3 ApplyDirectionalLight(
     float3    diffuseColor,    // Diffuse albedo
     float3    specularColor,    // Specular albedo
@@ -256,13 +269,9 @@ float3 ApplyDirectionalLight(
 {
     float shadow = GetShadow(shadowCoord);
 
-    return shadow * ApplyLightCommon(
+    return shadow * ApplyLightSimple(
         diffuseColor,
-        specularColor,
-        specularMask,
-        gloss,
         normal,
-        viewDir,
         lightDir,
         lightColor
         );
@@ -471,6 +480,7 @@ void main(GSOutput vsOutput)
     colorSum += ApplyDirectionalLight( diffuseAlbedo, specularAlbedo, specularMask, gloss, normalize(vsOutput.normal), viewDir, SunDirection, SunColor, vsOutput.shadowCoord );
 #endif // APPLY_DIRECTIONAL_LIGHT
 
+#if APPLY_FLASHLIGHT
     colorSum += ApplyConeLight(
         diffuseAlbedo,
         specularAlbedo,
@@ -485,7 +495,7 @@ void main(GSOutput vsOutput)
         VctSpotDir.xyz,
         VctSpotAngles.xy
     );
-
+#endif
 
 #if VCT_APPLY_INDIRECT_LIGHT
     {

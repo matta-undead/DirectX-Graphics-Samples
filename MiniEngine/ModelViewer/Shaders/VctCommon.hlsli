@@ -9,7 +9,7 @@
 #define VCT_OCCLUSION_MODE                      0
 #define VCT_OCCLUSION_MODE_SAO                  0
 
-#define VCT_PLACEHOLDER_DIFFUSE                 1
+#define VCT_PLACEHOLDER_DIFFUSE                 0
 
 #if VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI
     #define CONE_WEIGHT_UP      (5.0/20.0)
