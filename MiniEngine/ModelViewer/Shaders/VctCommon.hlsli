@@ -9,7 +9,7 @@
 #define VCT_OCCLUSION_MODE                      0
 #define VCT_OCCLUSION_MODE_SAO                  0
 
-#define VCT_PLACEHOLDER_DIFFUSE                 0
+#define VCT_PLACEHOLDER_DIFFUSE                 1
 
 #if VCT_INDIRECT_LIGHT_NEEDS_ONE_OVER_PI
     #define CONE_WEIGHT_UP      (5.0/20.0)
@@ -399,12 +399,12 @@ float3 ApplyIndirectLightAniso(
             if (0.0 < voxelStep.z)
             {
                 // step is +x, +y, +z
-                indirectSum = ApplyIndirectLightAnisoHelper(tbn, nx, ny, nz, voxelSmp, voxelPos, voxelStep);
+                indirectSum = ApplyIndirectLightAnisoHelper(tbn, px, py, pz, voxelSmp, voxelPos, voxelStep);
             }
             else
             {
                 // step is +x, +y, -z
-                indirectSum = ApplyIndirectLightAnisoHelper(tbn, nx, ny, pz, voxelSmp, voxelPos, voxelStep);
+                indirectSum = ApplyIndirectLightAnisoHelper(tbn, px, py, nz, voxelSmp, voxelPos, voxelStep);
             }
         }
         else
@@ -412,12 +412,12 @@ float3 ApplyIndirectLightAniso(
             if (0.0 < voxelStep.z)
             {
                 // step is +x, -y, +z
-                indirectSum = ApplyIndirectLightAnisoHelper(tbn, nx, py, nz, voxelSmp, voxelPos, voxelStep);
+                indirectSum = ApplyIndirectLightAnisoHelper(tbn, px, ny, pz, voxelSmp, voxelPos, voxelStep);
             }
             else
             {
                 // step is +x, -y, -z
-                indirectSum = ApplyIndirectLightAnisoHelper(tbn, nx, py, pz, voxelSmp, voxelPos, voxelStep);
+                indirectSum = ApplyIndirectLightAnisoHelper(tbn, px, ny, nz, voxelSmp, voxelPos, voxelStep);
             }
         }
     }
@@ -428,12 +428,12 @@ float3 ApplyIndirectLightAniso(
             if (0.0 < voxelStep.z)
             {
                 // step is -x, +y, +z
-                indirectSum = ApplyIndirectLightAnisoHelper(tbn, px, ny, nz, voxelSmp, voxelPos, voxelStep);
+                indirectSum = ApplyIndirectLightAnisoHelper(tbn, nx, py, pz, voxelSmp, voxelPos, voxelStep);
             }
             else
             {
                 // step is -x, +y, -z
-                indirectSum = ApplyIndirectLightAnisoHelper(tbn, px, ny, pz, voxelSmp, voxelPos, voxelStep);
+                indirectSum = ApplyIndirectLightAnisoHelper(tbn, nx, py, nz, voxelSmp, voxelPos, voxelStep);
             }
         }
         else
@@ -441,12 +441,12 @@ float3 ApplyIndirectLightAniso(
             if (0.0 < voxelStep.z)
             {
                 // step is -x, -y, +z
-                indirectSum = ApplyIndirectLightAnisoHelper(tbn, px, py, nz, voxelSmp, voxelPos, voxelStep);
+                indirectSum = ApplyIndirectLightAnisoHelper(tbn, nx, ny, pz, voxelSmp, voxelPos, voxelStep);
             }
             else
             {
                 // step is -x, -y, -z
-                indirectSum = ApplyIndirectLightAnisoHelper(tbn, px, py, pz, voxelSmp, voxelPos, voxelStep);
+                indirectSum = ApplyIndirectLightAnisoHelper(tbn, nx, ny, nz, voxelSmp, voxelPos, voxelStep);
             }
         }
     }

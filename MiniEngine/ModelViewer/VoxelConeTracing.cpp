@@ -33,7 +33,7 @@ namespace VoxelConeTracing
     RootSignature s_GenerateMipsRS;
     ComputePSO s_VctDownsamplePSO;
 
-    constexpr float kVoxelWorldSize = float(kVoxelDims * 8u);
+    constexpr float kVoxelWorldSize = float(kVoxelDims * 32u);
 }
 
 void VoxelConeTracing::Initialize( void )

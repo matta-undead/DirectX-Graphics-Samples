@@ -136,7 +136,7 @@ CREATE_APPLICATION( ModelViewer )
 ExpVar m_SunLightIntensity("Application/Lighting/Sun Light Intensity", 4.0f, 0.0f, 16.0f, 0.1f);
 ExpVar m_AmbientIntensity("Application/Lighting/Ambient Intensity", 0.1f, -16.0f, 16.0f, 0.1f);
 NumVar m_SunOrientation("Application/Lighting/Sun Orientation", -0.5f, -100.0f, 100.0f, 0.1f );
-NumVar m_SunInclination("Application/Lighting/Sun Inclination", 0.75f, 0.0f, 1.0f, 0.01f );
+NumVar m_SunInclination("Application/Lighting/Sun Inclination", 0.5f, 0.0f, 1.0f, 0.01f );
 NumVar ShadowDimX("Application/Lighting/Shadow Dim X", 5000, 1000, 10000, 100 );
 NumVar ShadowDimY("Application/Lighting/Shadow Dim Y", 3000, 1000, 10000, 100 );
 NumVar ShadowDimZ("Application/Lighting/Shadow Dim Z", 3000, 1000, 10000, 100 );
@@ -150,7 +150,7 @@ BoolVar DisplaySun("Application/VCT/Display Sun", true);
 BoolVar DisplayIndirect("Application/VCT/Display Indirect", true);
 BoolVar DisplayFlashlight("Application/VCT/Display Flashlight", false);
 BoolVar ShowVoxels("Application/VCT/Show Voxels", false);
-BoolVar AnimateSun("Application/VCT/Animate Sun", true);
+BoolVar AnimateSun("Application/VCT/Animate Sun", false);
 
 void ModelViewer::Startup( void )
 {

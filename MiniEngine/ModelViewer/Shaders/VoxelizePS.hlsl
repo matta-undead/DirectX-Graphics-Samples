@@ -10,7 +10,7 @@
 // these are looking wrong right now
 #define APPLY_NON_DIRECTIONAL_LIGHTS            0
 // sample previous frame's indirect light
-#define VCT_APPLY_INDIRECT_LIGHT                1
+#define VCT_APPLY_INDIRECT_LIGHT                0
 // colorize secondary bounce
 #define VCT_APPLY_DEBUG_TINT_TO_INDIRECT_LIGHT  0
 
@@ -447,6 +447,8 @@ void main(GSOutput vsOutput)
     float3 diffuseAlbedo = texDiffuse.Sample(sampler0, vsOutput.uv);
 #if VCT_PLACEHOLDER_DIFFUSE
     diffuseAlbedo = float3(0.18, 0.18, 0.18);
+    diffuseAlbedo = lerp(diffuseAlbedo, float3(0.2, 0.01, 0.03), smoothstep(0.0, 0.8, dot(vsOutput.normal.x, -1.0)));
+    diffuseAlbedo = lerp(diffuseAlbedo, float3(0.03, 0.2, 0.01), smoothstep(0.0, 0.8, dot(vsOutput.normal.x,  1.0)));
 #endif
 
     float3 colorSum = 0;
