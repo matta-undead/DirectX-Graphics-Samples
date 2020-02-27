@@ -63,7 +63,8 @@ void main(
     color += voxelBuffer[sourceIdx + uint3(1, 1, 1)];
 
     // Store average weight
-    outMip1[globalID] = color * 0.125;
+    color = color * 0.125;
+    outMip1[globalID] = color;
 
     if (NumMipLevels == 1)
     {
