@@ -36,16 +36,8 @@ struct VSOutput
     sample float3 bitangent : Bitangent;
 };
 
-struct GSOutput
+struct GSOutput : VSOutput
 {
-    sample float4 position : SV_Position;
-    sample float3 worldPos : WorldPos;
-    sample float2 uv : TexCoord0;
-    sample float3 viewDir : TexCoord1;
-    sample float3 shadowCoord : TexCoord2;
-    sample float3 normal : Normal;
-    sample float3 tangent : Tangent;
-    sample float3 bitangent : Bitangent;
     sample float2 swizzle : TexCoord3;
 };
 
